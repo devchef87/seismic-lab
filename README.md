@@ -2,11 +2,11 @@
 
 Real-time seismic intelligence platform. Multi-source data fusion for earthquake monitoring, analysis, and experimental prediction.
 
-**Live dashboard** with 24 seismic stations, DART buoy network, solar wind, geomagnetic indices, tidal stress, thermal anomalies, and volcanic activity — all in one place.
+**Live dashboard** with 24 seismic stations, DART buoy network, solar wind, geomagnetic indices, tidal stress, thermal anomalies, and volcanic activity, all in one place.
 
 ## Disclaimer
 
-I'm not a seismologist, scientist, or domain expert of any kind — I'm a software engineer who got curious about earthquakes and fell down a rabbit hole. I broke my foot recently and have been laid up, so this became my boredom buster. The data correlations and models here are experimental and should not be used for any real-world safety decisions. If you actually know seismology, I'd love your input — that's the whole point of open sourcing this.
+I broke my foot recently and have been laid up, so this became my boredom buster. I'm not a seismologist, scientist, or domain expert of any kind, I'm a software engineer who got curious about earthquakes and fell down a rabbit hole. The data correlations and models here are experimental and should not be used for any real-world safety decisions. If you actually know seismology, I'd love your input, that's the whole point of open sourcing this.
 
 ## What makes this different
 
@@ -71,23 +71,23 @@ python scripts/download_data.py --since 2026-06-01
 
 The HUD provides:
 
-- **Real-time seismic map** — earthquake feed with magnitude/time filters, station waveforms
-- **Workbench** — interactive charts for any signal (solar wind, Kp, tidal potential, GOES magnetometer, etc.) with auto-annotated anomaly badges
-- **Zone analysis** — active seismic zone detection with multi-signal correlation
-- **DART network** — seafloor pressure monitoring with mode transition detection
-- **Volcanic activity** — thermal anomaly tracking near active volcanoes
-- **AI forecasts** — experimental zone-level predictions (model in development)
+- **Real-time seismic map**, earthquake feed with magnitude/time filters, station waveforms
+- **Workbench**, interactive charts for any signal (solar wind, Kp, tidal potential, GOES magnetometer, etc.) with auto-annotated anomaly badges
+- **Zone analysis**, active seismic zone detection with multi-signal correlation
+- **DART network**, seafloor pressure monitoring with mode transition detection
+- **Volcanic activity**, thermal anomaly tracking near active volcanoes
+- **AI forecasts**, experimental zone-level predictions (model in development)
 
 ## Research
 
-The `lab/` directory contains reproducible experiments. These are exploratory — I'm learning as I go:
+The `lab/` directory contains reproducible experiments. These are exploratory, I'm learning as I go:
 
-- **`solar_seismic_coupling.py`** — Statistical analysis of solar wind / geomagnetic correlations with M6.5+ seismicity. Finding: 2.3x increased likelihood during high solar wind periods (p=0.02).
-- **`tidal_triggering.py`** — Tidal stress analysis on fault systems. Seafloor pressure trend reversals significant at p=0.02 before M6.5+ events.
-- **`dart_case_study.py`** — DART buoy pressure precursor analysis (Venezuela M7.5 case study).
-- **`train_stgnn.py`** — Spatio-Temporal Graph Neural Network for multi-zone prediction.
-- **`train_zone_test.py`** — Zone-focused training with full feature set (seismic + solar + tidal + DART).
-- **`deep_backfill.py`** — 5-year seismic waveform backfill from FDSN/IRIS.
+- **`solar_seismic_coupling.py`**, Statistical analysis of solar wind / geomagnetic correlations with M6.5+ seismicity. Finding: 2.3x increased likelihood during high solar wind periods (p=0.02).
+- **`tidal_triggering.py`**, Tidal stress analysis on fault systems. Seafloor pressure trend reversals significant at p=0.02 before M6.5+ events.
+- **`dart_case_study.py`**, DART buoy pressure precursor analysis (Venezuela M7.5 case study).
+- **`train_stgnn.py`**, Spatio-Temporal Graph Neural Network for multi-zone prediction.
+- **`train_zone_test.py`**, Zone-focused training with full feature set (seismic + solar + tidal + DART).
+- **`deep_backfill.py`**, 5-year seismic waveform backfill from FDSN/IRIS.
 
 ## Architecture
 
@@ -122,7 +122,7 @@ Copy `.env.example` to `.env` and configure:
 | `NASA_API_KEY` | No | NASA API for CME/flare data. Falls back to DEMO_KEY |
 | `FIRMS_API_KEY` | No | NASA FIRMS for thermal anomaly data. Free registration |
 
-The dashboard works without any API keys — most data sources (USGS, NOAA, SeedLink, Intermagnet, DART) are open and require no authentication.
+The dashboard works without any API keys, most data sources (USGS, NOAA, SeedLink, Intermagnet, DART) are open and require no authentication.
 
 ## License
 
