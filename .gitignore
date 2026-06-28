@@ -1,0 +1,49 @@
+# Data
+data/*.db
+data/*.db-journal
+data/*.db-wal
+export/
+*.parquet
+
+# Models
+models/*.pt
+models/*.onnx
+models/*.bin
+
+# Ephemeris
+*.bsp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Logs
+logs/
+*.log
+lightning_logs/
+
+# Lab artifacts
+lab/*.npz
+lab/results/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

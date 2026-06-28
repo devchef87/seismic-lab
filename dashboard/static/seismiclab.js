@@ -1,0 +1,3663 @@
+'use strict';
+
+const CONFIG = {
+    STREAM_URL: '/api/stream',
+    FAULT_RISK_INTERVAL: 60000,
+    HEATMAP_INTERVAL: 300000,
+    RECONNECT_DELAY: 3000,
+    MAP_CENTER: [2, 220],
+    MAP_ZOOM: 1.5,
+};
+
+const state = {
+    earthquakes: [],
+    signals: {},
+    signalHistory: {},
+    eqMarkers: {},
+    streamConnected: false,
+    topFaultZone: null,
+    seenQuakeIds: new Set(),
+    lastSeedlinkAlert: 0,
+    audioCtx: null,
+    seismoStation: null,
+    seismoBuffer: [],
+    seismoEnvelope: [],
+    seismoMode: 'raw',
+    seismoScale: 'live',
+    seismoSampleRate: 5,
+    seismoInterval: null,
+    seismoWs: null,
+    seismoRaf: null,
+    stationMarkers: {},
+    seedlinkStations: [],
+    embeddedSeismos: {},
+    dartMarkers: {},
+    volcanoMarkers: {},
+    tidalMarkers: {},
+    tidalData: null,
+    filterMag: 3.5,
+    filterHours: 24,
+};
+
+function getAudioCtx() {
+    if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return state.audioCtx;
+}
+
+function playQuakeAlert(mag) {
+    try {
+        const ctx = getAudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+        const now = ctx.currentTime;
+
+        const beeps = mag >= 6 ? 5 : mag >= 5 ? 4 : 3;
+        const freq = mag >= 6 ? 880 : mag >= 5 ? 740 : 620;
+        const tempo = mag >= 6 ? 0.14 : 0.18;
+
+        for (let i = 0; i < beeps; i++) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            osc.frequency.setValueAtTime(freq * 1.02, now + tempo * 0.5);
+
+            const t = now + i * (tempo + 0.06);
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.15, t + 0.015);
+            gain.gain.setValueAtTime(0.15, t + tempo * 0.6);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + tempo);
+
+            osc.start(t);
+            osc.stop(t + tempo + 0.01);
+        }
+    } catch (e) {
+        // audio not available
+    }
+}
+
+function checkNewQuakes(quakes) {
+    if (state.seenQuakeIds.size === 0) {
+        for (const eq of quakes) state.seenQuakeIds.add(eq.id);
+        return;
+    }
+    let alerted = false;
+    for (const eq of quakes) {
+        if (!state.seenQuakeIds.has(eq.id)) {
+            state.seenQuakeIds.add(eq.id);
+            if (eq.magnitude >= 4.0 && !alerted) {
+                playQuakeAlert(eq.magnitude);
+                alerted = true;
+            }
+        }
+    }
+}
+
+const SIGNAL_INFO = {
+    'noaa_swpc__kp_index': {
+        name: 'Kp Index',
+        what: 'The planetary K-index (Kp) is a 3-hour global measure of geomagnetic disturbance derived from ground-based magnetometer stations worldwide. It quantifies how much Earth\'s magnetic field is deviating from its quiet baseline.',
+        scale: '0 to 9 (quasi-logarithmic). Each integer step represents roughly a 2x increase in disturbance amplitude.',
+        baseline: 'Kp 0–2 is geomagnetically quiet. This is the normal background state for most days.',
+        watch: 'Kp 3–4 is unsettled — minor geomagnetic activity, usually not significant. Kp 5 is a minor geomagnetic storm (G1). Kp 6–7 is moderate to strong (G2–G3). Kp 8–9 is severe to extreme storm (G4–G5) — rare, typically from major CME impacts.',
+        why: 'Geomagnetic storms induce telluric currents in Earth\'s crust. Some peer-reviewed studies (Marchetti et al., Urata et al.) have found statistical correlation between elevated Kp periods and increased seismicity in already-stressed fault zones within 24–72 hours. We use Kp as supporting context, not a primary predictor.',
+        source: 'NOAA Space Weather Prediction Center (SWPC)',
+    },
+    'noaa_swpc__dst_index': {
+        name: 'Dst Index',
+        what: 'The Disturbance Storm Time (Dst) index measures the intensity of Earth\'s ring current — a toroidal electric current flowing westward around Earth at 3–8 Earth radii. It\'s the primary indicator of geomagnetic storm intensity.',
+        scale: 'Measured in nanotesla (nT). Ranges from roughly +20 nT (compressed field) to -500+ nT (extreme storm).',
+        baseline: 'Dst between +20 and -20 nT is quiet. Normal fluctuations stay within this range.',
+        watch: 'Dst -30 to -50 nT: weak storm developing. Dst -50 to -100 nT: moderate storm (watch closely). Dst -100 to -200 nT: strong storm. Dst below -200 nT: severe/extreme storm. The rate of change (dDst/dt) is critical — a sudden drop of >8 nT/hr signals a storm commencement (SSC), which our onset detector flags.',
+        why: 'A rapidly declining Dst means the ring current is intensifying quickly, typically from CME shock arrival. This sudden compression generates ground-level induced electric fields. Our Tier 1 detector uses dDst/dt as a leading indicator — the rate of decline matters more than the absolute value.',
+        source: 'NOAA SWPC / Kyoto WDC',
+    },
+    'goes_magnetometer__goes_mag_total': {
+        name: 'GOES Mag |B| (Total Field)',
+        what: 'The total magnetic field magnitude measured by GOES satellites at geosynchronous orbit (~35,786 km altitude). This is a direct measurement of the magnetospheric field strength at Earth\'s boundary with the solar wind.',
+        scale: 'Measured in nanotesla (nT). Typical quiet values are 80–110 nT at geosynchronous orbit.',
+        baseline: '80–110 nT during quiet conditions. The field strength at geosynchronous orbit depends on local time (day/night asymmetry).',
+        watch: 'Sudden jump of >10–15 nT: magnetospheric compression from solar wind pressure pulse or CME shock — this is what you\'re seeing now. Sudden drop of >15 nT: magnetospheric expansion, possible substorm. Values below 50 nT: extreme compression has pushed the magnetopause inside geosynchronous orbit (rare, severe). This is our fastest-responding geomag indicator — it reacts before Kp or Dst update.',
+        why: 'GOES |B| responds to solar wind changes within minutes, while Kp and Dst lag by hours. A sudden compression means increased solar wind pressure is hitting Earth\'s magnetosphere right now. Our onset detector flags jumps >10 nT as "magnetospheric compression" — a leading indicator that Kp and Dst will follow.',
+        source: 'NOAA GOES-16/18 magnetometer',
+    },
+    'goes_magnetometer__goes_mag_hp': {
+        name: 'GOES Mag Hp (Parallel Component)',
+        what: 'The Hp component of the magnetic field at GOES — the component parallel to Earth\'s dipole axis. This is the most sensitive component to magnetospheric compression and expansion.',
+        scale: 'Measured in nanotesla (nT). Quiet values typically 40–70 nT.',
+        baseline: '40–70 nT during quiet periods. Tracks closely with |B| but more sensitive to north-south field changes.',
+        watch: 'Hp tracks compression events similarly to |B|. A sharp increase means the field is being compressed. A sharp decrease (especially going negative) indicates the north-south component has flipped — a signature of substorm onset or southward IMF turning, which drives stronger geomagnetic coupling.',
+        why: 'Hp is a complementary measurement to |B|. When both jump simultaneously, it confirms a true compression event rather than instrument noise or local effects.',
+        source: 'NOAA GOES-16/18 magnetometer',
+    },
+    'usgs_magnetometer__mag_z': {
+        name: 'Ground Mag Z (Vertical Component)',
+        what: 'The vertical component of Earth\'s magnetic field measured by ground-based magnetometer observatories. Unlike GOES (which measures the field in space), this measures the field at Earth\'s surface, directly where telluric currents are induced.',
+        scale: 'Measured in nanotesla (nT). Absolute values vary by station latitude (typically 20,000–60,000 nT). We track the variation from baseline, not absolute values.',
+        baseline: 'Varies by location. What matters is the rate of change (dB/dt) — quiet conditions show smooth, slow variations of <1 nT/min.',
+        watch: 'dB/dt > 5 nT/min: notable. dB/dt > 10 nT/min: significant (power grid operators start watching). dB/dt > 50 nT/min: extreme (associated with GIC events). Our detector flags when dB/dt is >2x above its own recent baseline — meaning the rate-of-change has at least doubled.',
+        why: 'Ground dB/dt is directly proportional to the electric field induced in the crust (Faraday\'s law). Rapid magnetic field changes generate telluric currents that flow through conductive structures including fault zones. This is the most direct proxy we have for the actual stress-adding mechanism that connects geomagnetic events to seismicity.',
+        source: 'USGS Geomagnetism Program',
+    },
+    'intermagnet__imag_f': {
+        name: 'INTERMAGNET F (Total Field)',
+        what: 'The total magnetic field intensity from the INTERMAGNET global network of magnetic observatories. This is a high-quality, calibrated measurement of the complete geomagnetic field at ground level.',
+        scale: 'Measured in nanotesla (nT). Absolute values range from ~25,000 nT (equator) to ~65,000 nT (poles).',
+        baseline: 'Extremely stable during quiet conditions. Daily variations (Sq) are typically 20–50 nT with a smooth sinusoidal shape driven by solar heating of the ionosphere.',
+        watch: 'Deviations >100 nT from expected Sq pattern: storm effects reaching the ground. Rapid fluctuations (Pi2 pulsations, 40–150 second period): substorm onset signature. Irregular high-frequency variations: storm-time disturbance field. Compare with GOES — if GOES shows compression but INTERMAGNET F is quiet, the disturbance hasn\'t reached ground level yet.',
+        why: 'INTERMAGNET provides ground truth for what\'s actually happening at Earth\'s surface. GOES tells us what\'s coming, ground magnetometers tell us what\'s arrived. The combination gives us a complete picture of the geomagnetic disturbance chain from space to crust.',
+        source: 'INTERMAGNET international network',
+    },
+};
+
+function openSignalInfo(key) {
+    const info = SIGNAL_INFO[key];
+    if (!info) return;
+
+    let modal = document.getElementById('signal-info-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'signal-info-modal';
+        modal.className = 'signal-info-modal';
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeSignalInfo();
+        });
+        document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+        <div class="signal-info-panel">
+            <button class="signal-info-close" onclick="closeSignalInfo()">&times;</button>
+            <div class="signal-info-title">${info.name}</div>
+            <div class="signal-info-section">
+                <div class="signal-info-heading">What is this?</div>
+                <div class="signal-info-body">${info.what}</div>
+            </div>
+            <div class="signal-info-section">
+                <div class="signal-info-heading">Scale</div>
+                <div class="signal-info-body">${info.scale}</div>
+            </div>
+            <div class="signal-info-section">
+                <div class="signal-info-heading">Normal baseline</div>
+                <div class="signal-info-body">${info.baseline}</div>
+            </div>
+            <div class="signal-info-section">
+                <div class="signal-info-heading">What to watch for</div>
+                <div class="signal-info-body">${info.watch}</div>
+            </div>
+            <div class="signal-info-section">
+                <div class="signal-info-heading">Why we track it</div>
+                <div class="signal-info-body">${info.why}</div>
+            </div>
+            <div class="signal-info-source">Source: ${info.source}</div>
+        </div>
+    `;
+    requestAnimationFrame(() => modal.classList.add('visible'));
+}
+
+function closeSignalInfo() {
+    const modal = document.getElementById('signal-info-modal');
+    if (modal) modal.classList.remove('visible');
+}
+
+// ── Map (inside grid center cell) ────────────────────────
+const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    center: [CONFIG.MAP_CENTER[1], CONFIG.MAP_CENTER[0]],
+    zoom: CONFIG.MAP_ZOOM,
+    pitch: 40,
+    maxPitch: 60,
+    attributionControl: false,
+    renderWorldCopies: true,
+});
+
+let mapReady = false;
+const hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '280px' });
+
+function setTooltip(marker, html) {
+    marker._tipHtml = html;
+    const el = marker.getElement();
+    if (el._hasTip) return;
+    el._hasTip = true;
+    el.addEventListener('mouseenter', () => {
+        hoverPopup.setHTML(marker._tipHtml).setLngLat(marker.getLngLat()).addTo(map);
+    });
+    el.addEventListener('mouseleave', () => hoverPopup.remove());
+}
+
+// ── Plate boundaries ─────────────────────────────────────
+const PLATE_BOUNDARIES = [
+    [[-55,-70],[-46,-75],[-38,-73],[-33,-71],[-24,-70],[-18,-70],[-12,-76],[-5,-80],[2,-78]],
+    [[2,-78],[8,-83],[14,-93],[17,-100],[20,-106],[23,-110]],
+    [[23,-110],[28,-113],[32,-117],[34,-120],[37,-122],[40,-125],[44,-127],[48,-128],[51,-130]],
+    [[51,-130],[55,-136],[57,-150],[56,-158],[53,-167],[52,-172],[51,178],[50,172],[50,165]],
+    [[50,165],[52,160],[50,157],[46,152],[42,146],[38,142],[35,140],[32,135],[30,132]],
+    [[30,132],[27,128],[24,124],[20,122],[16,121],[12,124],[8,126],[4,127],[0,124],[-3,120],[-7,115],[-9,110],[-7,105],[-5,100],[-3,95]],
+    [[-46,167],[-42,174],[-38,178],[-34,-178],[-28,-176],[-22,-174],[-16,-173]],
+    [[36,-10],[37,-5],[37,0],[38,5],[39,10],[38,15],[37,20],[38,28],[39,35],[38,42],[36,48],[34,52],[32,57]],
+    [[32,57],[31,62],[30,67],[30,72],[29,77],[28,82],[27,86],[28,92],[26,95],[22,96]],
+    [[65,-18],[62,-22],[55,-30],[45,-28],[35,-35],[25,-45],[15,-46],[5,-32],[0,-14],[-10,-13],[-20,-12],[-30,-14],[-40,-15],[-50,-8],[-55,-5]],
+    [[12,42],[8,38],[4,36],[0,33],[-4,30],[-8,32],[-12,34],[-16,35],[-20,35]],
+];
+
+function buildPlateGeoJSON() {
+    const features = PLATE_BOUNDARIES.map(coords => ({
+        type: 'Feature',
+        geometry: {
+            type: 'LineString',
+            coordinates: coords.map(([lat, lon]) => [lon, lat])
+        },
+        properties: {}
+    }));
+    return { type: 'FeatureCollection', features };
+}
+
+// ── map.on('load') ──────────────────────────────────────
+map.on('load', () => {
+    // 3D terrain
+    map.addSource('terrain-dem', {
+        type: 'raster-dem',
+        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+        encoding: 'terrarium',
+        tileSize: 256,
+        maxzoom: 15,
+    });
+    map.addLayer({
+        id: 'hillshade',
+        type: 'hillshade',
+        source: 'terrain-dem',
+        paint: {
+            'hillshade-illumination-direction': 315,
+            'hillshade-exaggeration': 0.4,
+            'hillshade-shadow-color': 'rgba(0,0,0,0.5)',
+            'hillshade-highlight-color': 'rgba(255,255,255,0.12)',
+            'hillshade-accent-color': 'rgba(80,120,180,0.15)',
+        }
+    });
+    map.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
+    map.setSky({
+        'sky-color': '#060810',
+        'sky-horizon-blend': 0.3,
+        'horizon-color': '#0a0e1a',
+        'horizon-fog-blend': 0.8,
+        'fog-color': '#060810',
+        'fog-ground-blend': 0.9,
+    });
+
+    // Plate boundaries
+    map.addSource('plate-boundaries', { type: 'geojson', data: buildPlateGeoJSON() });
+    map.addLayer({
+        id: 'plate-boundaries',
+        type: 'line',
+        source: 'plate-boundaries',
+        paint: { 'line-color': 'rgba(255,255,255,0.18)', 'line-width': 1, 'line-dasharray': [5, 5] }
+    });
+
+    // Seismicity heatmap
+    map.addSource('eq-heat', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+        id: 'eq-heatmap',
+        type: 'heatmap',
+        source: 'eq-heat',
+        paint: {
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
+                0, 40, 2, 35, 4, 35, 6, 40, 8, 50, 10, 60],
+            'heatmap-weight': ['get', 'weight'],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'],
+                0, 0.7, 2, 0.8, 4, 0.9, 6, 1, 10, 1.2],
+            'heatmap-opacity': ['interpolate', ['linear'], ['zoom'],
+                0, 0.45, 3, 0.5, 6, 0.55, 10, 0.55],
+            'heatmap-color': [
+                'interpolate', ['linear'], ['heatmap-density'],
+                0, 'transparent', 0.15, 'rgba(30,60,140,0.3)',
+                0.35, 'rgba(60,100,180,0.4)', 0.55, 'rgba(140,120,60,0.5)',
+                0.75, 'rgba(200,120,40,0.6)', 1.0, 'rgba(200,60,30,0.7)'
+            ]
+        }
+    });
+
+    // Fault risk heatmap
+    map.addSource('fault-heat', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+        id: 'fault-heatmap',
+        type: 'heatmap',
+        source: 'fault-heat',
+        paint: {
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
+                0, 22, 2, 22, 4, 25, 6, 30, 8, 40, 10, 50],
+            'heatmap-weight': ['get', 'weight'],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'],
+                0, 0.45, 3, 0.55, 6, 0.6, 10, 0.7],
+            'heatmap-opacity': ['interpolate', ['linear'], ['zoom'],
+                0, 0.3, 3, 0.33, 6, 0.35, 10, 0.35],
+            'heatmap-color': [
+                'interpolate', ['linear'], ['heatmap-density'],
+                0, 'transparent', 0.4, 'transparent',
+                0.5, 'rgba(220,90,20,0.06)', 0.65, 'rgba(240,70,15,0.12)',
+                0.8, 'rgba(255,50,10,0.25)', 0.9, 'rgba(255,30,0,0.4)',
+                1.0, 'rgba(255,20,0,0.55)'
+            ]
+        }
+    });
+
+    // Fault risk line overlays
+    map.addSource('fault-lines', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+        id: 'fault-lines-glow',
+        type: 'line',
+        source: 'fault-lines',
+        paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'glowWidth'], 'line-opacity': ['get', 'glowOpacity'] },
+        layout: { 'line-cap': 'round' }
+    });
+    map.addLayer({
+        id: 'fault-lines-core',
+        type: 'line',
+        source: 'fault-lines',
+        paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'width'], 'line-opacity': ['get', 'opacity'] },
+        layout: { 'line-cap': 'round' }
+    });
+
+    mapReady = true;
+    refreshFaultRisk();
+    refreshHeatmap();
+});
+
+// ── Region name guesser ──────────────────────────────────
+const REGION_NAMES = [
+    [[34,-119], 'Southern California'],
+    [[37,-122], 'San Francisco Bay'],
+    [[41,-124], 'Cascadia (N. California)'],
+    [[46,-123], 'Pacific Northwest'],
+    [[50,-130], 'British Columbia'],
+    [[55,-136], 'Gulf of Alaska'],
+    [[57,-150], 'Alaska Peninsula'],
+    [[53,-167], 'Aleutian Islands'],
+    [[51,178],  'Western Aleutians'],
+    [[38,142],  'Japan Trench'],
+    [[35,140],  'Nankai Trough, Japan'],
+    [[30,132],  'Ryukyu Arc, Japan'],
+    [[20,122],  'Philippines / Taiwan'],
+    [[8,126],   'Mindanao, Philippines'],
+    [[-3,120],  'Banda Sea, Indonesia'],
+    [[-7,115],  'Java, Indonesia'],
+    [[-9,110],  'Sunda Strait'],
+    [[-5,100],  'Sumatra, Indonesia'],
+    [[22,96],   'Myanmar / Bay of Bengal'],
+    [[38,28],   'Aegean Sea, Turkey'],
+    [[37,20],   'Greece / Ionian Sea'],
+    [[39,35],   'Central Turkey'],
+    [[36,48],   'Iran'],
+    [[32,57],   'Eastern Iran'],
+    [[30,67],   'Pakistan / Afghanistan'],
+    [[28,82],   'Nepal / Himalayas'],
+    [[65,-18],  'Iceland'],
+    [[45,-28],  'Mid-Atlantic Ridge'],
+    [[0,-14],   'Equatorial Atlantic'],
+    [[-30,-14], 'South Atlantic'],
+    [[-55,-5],  'Scotia Arc, S. Atlantic'],
+    [[12,42],   'Red Sea / Afar'],
+    [[-8,32],   'East African Rift'],
+    [[-20,35],  'Mozambique Channel'],
+    [[-46,167], 'New Zealand (S. Island)'],
+    [[-38,178], 'New Zealand (N. Island)'],
+    [[-22,-174],'Tonga Trench'],
+    [[-16,-173],'Samoa / Tonga'],
+    [[-33,-71], 'Central Chile'],
+    [[-18,-70], 'Peru / Chile'],
+    [[-5,-80],  'Ecuador / N. Peru'],
+    [[2,-78],   'Colombia / Ecuador'],
+    [[8,-83],   'Central America'],
+    [[14,-93],  'Mexico (S. Coast)'],
+    [[20,-106], 'Western Mexico'],
+    [[23,-110], 'Baja California'],
+    [[28,-113], 'Gulf of California'],
+];
+
+function guessRegionName(lat, lon) {
+    let best = null, bestDist = Infinity;
+    for (const [coords, name] of REGION_NAMES) {
+        const dlat = lat - coords[0], dlon = lon - coords[1];
+        const d = dlat * dlat + dlon * dlon;
+        if (d < bestDist) { bestDist = d; best = name; }
+    }
+    return best || `${lat.toFixed(1)}, ${lon.toFixed(1)}`;
+}
+
+// ── Threat monitor (right sidebar) ───────────────────────
+function threatColor(level) {
+    if (level === 'ALERT')    return 'rgba(220,70,50,0.85)';
+    if (level === 'ELEVATED') return 'rgba(210,160,50,0.8)';
+    if (level === 'WATCH')    return 'rgba(160,170,70,0.7)';
+    return 'rgba(120,160,180,0.4)';
+}
+
+function renderZoneRow(z) {
+    const levelCls = `zone-level-${z.level.toLowerCase()}`;
+    const isHigh = z.level === 'ELEVATED' || z.level === 'ALERT';
+
+    let signalLines = '';
+    if (z.signals && z.signals.length > 0) {
+        const maxSigs = isHigh ? 3 : 2;
+        const boost = z.signals.filter(s => s.signal.startsWith('Gravitational stress') || s.signal.startsWith('ML forecast'));
+        const other = z.signals.filter(s => !s.signal.startsWith('Gravitational stress') && !s.signal.startsWith('ML forecast'));
+        const picked = [...other.slice(0, isHigh ? 2 : 1), ...boost].slice(0, maxSigs);
+        if (picked.length > 0) {
+            signalLines = '<div class="zone-signals">' +
+                picked.map(s =>
+                    `<div class="zone-signal-line">${s.signal}</div>`
+                ).join('') + '</div>';
+        }
+    }
+
+    return `<div class="zone-row" data-lat="${z.center[0]}" data-lon="${z.center[1]}" data-name="${z.name}">
+        <div class="zone-name">${z.name}</div>
+        <span class="zone-level ${levelCls}">${z.level}</span>
+    </div>${signalLines}`;
+}
+
+function updateThreatMonitor(zones) {
+    const el = document.getElementById('zone-list');
+    if (!el) return;
+    if (!zones || zones.length === 0) {
+        el.innerHTML = '<div class="panel-muted">No zones scanned</div>';
+        return;
+    }
+
+    state.topFaultZone = zones[0];
+    const alertZones = zones.filter(z => z.level === 'ALERT' || z.level === 'ELEVATED').slice(0, 10);
+    const watchZones = zones.filter(z => z.level === 'WATCH');
+
+    let html = '';
+    for (const z of alertZones) html += renderZoneRow(z);
+
+    if (alertZones.length === 0) {
+        html = '<div class="panel-muted">No active alerts</div>';
+    }
+
+    if (watchZones.length > 0) {
+        html += `<div class="zone-watch-toggle" id="zone-watch-toggle"><span class="toggle-arrow">&#9662;</span> ${watchZones.length} Watch</div>`;
+        html += '<div class="zone-watch-list" id="zone-watch-list">';
+        for (const z of watchZones) html += renderZoneRow(z);
+        html += '</div>';
+    }
+
+    el.innerHTML = html;
+
+    document.getElementById('zone-watch-toggle')?.addEventListener('click', () => {
+        const toggle = document.getElementById('zone-watch-toggle');
+        const list = document.getElementById('zone-watch-list');
+        toggle.classList.toggle('expanded');
+        list.classList.toggle('expanded');
+    });
+
+    el.querySelectorAll('.zone-row').forEach(item => {
+        item.addEventListener('click', () => {
+            predictLocation(
+                parseFloat(item.dataset.lat),
+                parseFloat(item.dataset.lon),
+                item.dataset.name
+            );
+        });
+    });
+}
+
+function updateDartSummary(data) {
+    const el = document.getElementById('dart-summary');
+    if (!el || !data || !data.stations) return;
+
+    const stations = data.stations;
+    const event = stations.filter(s => s.mode === 'event');
+    const tsunami = stations.filter(s => s.mode === 'tsunami');
+    const elevated = stations.filter(s => s.mode === 'normal' && (s.deviation || 0) >= 1.5);
+    const active = [...tsunami, ...event, ...elevated];
+
+    const evtCls = event.length > 0 ? ' dart-count-event' : '';
+    const tsuCls = tsunami.length > 0 ? ' dart-count-tsunami' : '';
+    const elevCls = elevated.length > 0 ? ' dart-count-elevated' : '';
+    let html = `<div class="dart-status-row">
+        <span class="dart-count">${stations.length}</span> buoys
+        <span style="opacity:0.12;margin:0 2px">/</span>
+        <span class="dart-count${evtCls}">${event.length}</span> event
+        <span style="opacity:0.12;margin:0 2px">/</span>
+        <span class="dart-count${tsuCls}">${tsunami.length}</span> tsunami
+        <span style="opacity:0.12;margin:0 2px">/</span>
+        <span class="dart-count${elevCls}">${elevated.length}</span> signal
+    </div>`;
+
+    if (active.length > 0) {
+        html += '<div class="dart-active-list">';
+        for (const s of active) {
+            const cls = s.mode === 'tsunami' ? 'tsunami' : s.mode === 'event' ? 'event' : 'elevated';
+            const label = s.mode === 'normal' ? `${s.deviation.toFixed(1)}σ` : s.mode;
+            html += `<div class="dart-active-row ${cls}">
+                <span class="dart-active-id">${s.station_id}</span>
+                <span class="dart-active-region">${s.region || '—'}</span>
+                <span class="dart-active-mode">${label}</span>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    el.innerHTML = html;
+}
+
+function updateVolcanicSummary(data) {
+    const el = document.getElementById('volcanic-summary');
+    if (!el || !data || !data.volcanoes) return;
+
+    state._volcanicData = data;
+    const volcanoes = data.volcanoes;
+    const high = volcanoes.filter(v => v.level === 'high');
+    const elevated = volcanoes.filter(v => v.level === 'elevated');
+    const active = volcanoes.filter(v => v.level === 'active');
+
+    const activeVids = new Set(Object.keys(state.volcanoMarkers));
+
+    const highCls = high.length > 0 ? ' volcanic-count-high' : '';
+    const activeCls = active.length > 0 ? ' volcanic-count-active' : '';
+    let html = `<div class="volcanic-status-row">
+        <span class="volcanic-count${highCls}">${high.length}</span> high
+        <span class="volcanic-sep">/</span>
+        <span class="volcanic-count">${elevated.length}</span> elevated
+        <span class="volcanic-sep">/</span>
+        <span class="volcanic-count${activeCls}">${active.length}</span> active
+    </div>`;
+
+    const show = [...high, ...elevated.slice(0, 5), ...active];
+    if (show.length > 0) {
+        html += '<div class="volcanic-list">';
+        for (const v of show) {
+            const on = activeVids.has(String(v.id));
+            const frpLabel = v.max_frp > 0 ? `${v.max_frp.toFixed(0)}MW` : 'GVP';
+            html += `<div class="volcanic-row">
+                <label class="volcanic-toggle"><input type="checkbox" data-vid="${v.id}"${on ? ' checked' : ''}><span class="volcanic-check"></span></label>
+                <span class="volcanic-name" title="${v.name}">${v.name}</span>
+                <span class="volcanic-frp">${frpLabel}</span>
+                <span class="volcanic-badge ${v.level}">${v.level.toUpperCase()}</span>
+            </div>`;
+        }
+        html += '</div>';
+    }
+
+    el.innerHTML = html;
+
+    el.querySelectorAll('input[data-vid]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const vid = cb.dataset.vid;
+            if (cb.checked) {
+                _showVolcanoMarker(vid);
+            } else {
+                _hideVolcanoMarker(vid);
+            }
+        });
+    });
+}
+
+function _showVolcanoMarker(vid) {
+    const data = state._volcanicData;
+    if (!data) return;
+    const v = data.volcanoes.find(x => String(x.id) === String(vid));
+    if (!v) return;
+    const key = String(vid);
+    if (state.volcanoMarkers[key]) return;
+
+    const levelClass = 'volcano-' + v.level;
+    const size = v.level === 'high' ? 14 : 11;
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="volcano-marker ${levelClass}"></div>`;
+    el.style.cursor = 'pointer';
+
+    const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([v.lon, v.lat])
+        .addTo(map);
+
+    const tooltip = `<b>${v.name}</b><br>${v.hotspot_count} hotspots (48h)<br>FRP: ${v.max_frp} MW | ${v.max_brightness}K<br>Level: <b>${v.level.toUpperCase()}</b>`;
+    setTooltip(m, tooltip);
+    state.volcanoMarkers[key] = m;
+}
+
+function _hideVolcanoMarker(vid) {
+    const key = String(vid);
+    if (state.volcanoMarkers[key]) {
+        state.volcanoMarkers[key].remove();
+        delete state.volcanoMarkers[key];
+    }
+}
+
+function updateVolcanoMarkers() {}
+
+function updateConditions(signals) {
+    const el = document.getElementById('conditions-panel');
+    if (!el) return;
+
+    const items = [
+        { key: 'noaa_swpc__kp_index', label: 'Kp Index', unit: '',
+          status: v => v >= 5 ? ['Storm', 'cond-storm'] : v >= 4 ? ['Active', 'cond-active'] : ['', ''] },
+        { key: 'noaa_swpc__dst_index', label: 'Dst Index', unit: 'nT',
+          status: v => v <= -50 ? ['Storm', 'cond-storm'] : v <= -20 ? ['Active', 'cond-active'] : ['', ''] },
+    ];
+
+    const swKey = Object.keys(signals).find(k => k.includes('solar_wind') && k.includes('speed'));
+    if (swKey && signals[swKey]) {
+        items.push({
+            key: swKey, label: 'Solar Wind', unit: 'km/s',
+            status: v => v >= 600 ? ['High', 'cond-storm'] : v >= 450 ? ['Elevated', 'cond-active'] : ['', ''],
+        });
+    }
+
+    let html = '';
+    for (const item of items) {
+        const sig = signals[item.key];
+        if (!sig) continue;
+        const val = typeof sig.value === 'number' ? (item.unit === 'km/s' ? sig.value.toFixed(0) : sig.value.toFixed(1)) : sig.value;
+        const [statusText, statusCls] = item.status(sig.value);
+        const statusHtml = statusText ? `<span class="condition-status ${statusCls}">${statusText}</span>` : '';
+        const canvasId = 'cond-spark-' + item.key.replace(/[^a-z0-9]/gi, '-');
+        html += `<div class="condition-item">
+            <div class="condition-header">
+                <span class="condition-label">${item.label}</span>
+                <span class="condition-value">${val}</span>
+                <span class="condition-unit">${item.unit}</span>
+                ${statusHtml}
+            </div>
+            <canvas class="condition-spark" id="${canvasId}"></canvas>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+
+    requestAnimationFrame(() => {
+        for (const item of items) {
+            const canvasId = 'cond-spark-' + item.key.replace(/[^a-z0-9]/gi, '-');
+            const canvas = document.getElementById(canvasId);
+            const history = state.signalHistory[item.key];
+            if (canvas && history && history.length > 1) drawSparkline(canvas, history, 'rgba(255,255,255,0.5)');
+        }
+    });
+}
+
+function updateSeismicitySummary(data) {
+    const el = document.getElementById('seismicity-summary');
+    if (!el || !data) return;
+
+    el.innerHTML = `
+        <canvas class="seis-chart" id="seis-hourly-chart"></canvas>
+        <div class="seis-stats">
+            <div class="seis-stat">
+                <span class="seis-stat-value">${data.total_24h}</span>
+                <span class="seis-stat-label">Total</span>
+            </div>
+            <div class="seis-stat">
+                <span class="seis-stat-value">${data.m45_24h}</span>
+                <span class="seis-stat-label">M4.5+</span>
+            </div>
+            <div class="seis-stat">
+                <span class="seis-stat-value">${data.m50_24h}</span>
+                <span class="seis-stat-label">M5+</span>
+            </div>
+            <div class="seis-stat">
+                <span class="seis-stat-value">${data.max_mag_24h}</span>
+                <span class="seis-stat-label">Peak</span>
+            </div>
+        </div>
+    `;
+
+    if (data.hourly_counts && data.hourly_counts.length > 1) {
+        requestAnimationFrame(() => {
+            const canvas = document.getElementById('seis-hourly-chart');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width, h = rect.height;
+            if (w === 0) return;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            const counts = data.hourly_counts;
+            const maxVal = Math.max(...counts, 1);
+            const barW = (w - 2) / counts.length;
+            const gap = Math.max(1, barW * 0.15);
+
+            for (let i = 0; i < counts.length; i++) {
+                const barH = Math.max(1, (counts[i] / maxVal) * (h - 2));
+                const x = 1 + i * barW + gap / 2;
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.fillRect(x, h - barH, barW - gap, barH);
+            }
+        });
+    }
+}
+
+// ── AI Forecast panel ───────────────────────────────────
+function updateForecastPanel(data) {
+    const el = document.getElementById('forecast-list');
+    if (!el) return;
+
+    const active = (data.active || []).filter(p => p.probability >= 0.35);
+    const metrics = data.metrics || {};
+
+    if (active.length === 0 && !metrics.total_resolved) {
+        el.innerHTML = '<div class="panel-muted">No active forecasts</div>';
+        return;
+    }
+
+    let html = '';
+
+    for (const p of active.slice(0, 5)) {
+        const pct = (p.probability * 100).toFixed(0);
+        const tier = p.probability >= 0.75 ? 'alert' : p.probability >= 0.55 ? 'elevated' : 'watch';
+        const tierLabel = tier === 'alert' ? 'HIGH' : tier === 'elevated' ? 'LIKELY' : 'POSSIBLE';
+        const windowLabel = p.window_hours <= 24 ? '24h' : p.window_hours <= 48 ? '48h' : '72h';
+
+        let topFeats = p.top_features || [];
+        if (typeof topFeats === 'string') {
+            try { topFeats = JSON.parse(topFeats); } catch(e) { topFeats = []; }
+        }
+        const drivers = topFeats.slice(0, 2).map(f => {
+            return f.feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        });
+
+        html += `<div class="forecast-row" data-zone="${p.zone_id}">
+            <div class="forecast-header">
+                <span class="forecast-zone">${p.zone_name}</span>
+                <span class="forecast-tier forecast-tier-${tier}">${tierLabel}</span>
+            </div>
+            <div class="forecast-detail">M${p.magnitude_est} (${p.magnitude_lo}–${p.magnitude_hi}) within ${windowLabel} — ${pct}% confidence</div>
+            ${drivers.length > 0 ? `<div class="forecast-drivers">${drivers.join(' · ')}</div>` : ''}
+        </div>`;
+    }
+
+    if (metrics.total_resolved > 0) {
+        const hitPct = (metrics.hit_rate * 100).toFixed(0);
+        const leadStr = metrics.avg_lead_time_hours ? `${metrics.avg_lead_time_hours.toFixed(0)}h avg lead` : '';
+        const magErr = metrics.avg_magnitude_error ? ` · ±${metrics.avg_magnitude_error.toFixed(1)} mag` : '';
+        html += `<div class="forecast-track-record">
+            <span class="forecast-track-hits">${metrics.hits}/${metrics.total_resolved} hit (${hitPct}%)</span>
+            <span class="forecast-track-detail">${leadStr}${magErr}</span>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+
+    el.querySelectorAll('.forecast-row[data-zone]').forEach(row => {
+        row.addEventListener('click', () => openForecastDetail(row.dataset.zone));
+    });
+}
+
+// ── Chart helpers ────────────────────────────────────────
+function drawAreaChart(canvas, data, color, opts = {}) {
+    if (!canvas || !data || data.length < 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const values = data.map(d => typeof d === 'number' ? d : d.v);
+    const min = opts.min != null ? opts.min : Math.min(...values);
+    const max = opts.max != null ? opts.max : Math.max(...values);
+    const range = max - min || 1;
+    const pad = 4;
+
+    if (opts.threshold != null) {
+        const ty = h - pad - ((opts.threshold - min) / range) * (h - pad * 2);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, ty);
+        ctx.lineTo(w, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < values.length; i++) {
+        const x = (i / (values.length - 1)) * w;
+        const y = h - pad - ((values[i] - min) / range) * (h - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, hexToRgba(color, 0.12));
+    grad.addColorStop(1, hexToRgba(color, 0));
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    if (opts.labels) {
+        ctx.font = '9px Inter, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.textAlign = 'left';
+        ctx.fillText(opts.labels[0], 2, h - 2);
+        ctx.textAlign = 'right';
+        ctx.fillText(opts.labels[1], w - 2, h - 2);
+    }
+}
+
+function drawBarChart(canvas, data, colorFn) {
+    if (!canvas || !data || data.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const max = Math.max(...data.map(d => d.count)) || 1;
+    const barW = Math.max(2, (w / data.length) - 1);
+    const gap = 1;
+    for (let i = 0; i < data.length; i++) {
+        const barH = Math.max(1, (data[i].count / max) * (h - 4));
+        const x = i * (barW + gap);
+        const y = h - barH;
+        ctx.fillStyle = colorFn ? colorFn(data[i]) : 'rgba(120,160,200,0.3)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, barH, 1);
+        ctx.fill();
+    }
+}
+
+function drawGaugeArc(canvas, value, max, color) {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const size = rect.width;
+    if (size === 0) return;
+    canvas.width = size * dpr;
+    canvas.height = (size / 2 + 8) * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const cx = size / 2, cy = size / 2;
+    const r = (size - 12) / 2;
+    const startAngle = Math.PI;
+    const endAngle = 2 * Math.PI;
+    const pct = Math.min(1, Math.max(0, value / max));
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, startAngle + pct * Math.PI);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, startAngle + pct * Math.PI);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+}
+
+// ── Full analysis drawer ─────────────────────────────────
+async function openFullAnalysis(lat, lon, regionName) {
+    const drawer = document.getElementById('analysis-drawer');
+    const content = document.getElementById('analysis-content');
+
+    content.innerHTML = '<div class="loading" style="padding:80px 0;text-align:center;font-size:13px">Loading full analysis...</div>';
+    drawer.classList.add('visible');
+
+    try {
+        const [predResp, threatResp, histResp] = await Promise.all([
+            fetch(`/api/predict?lat=${lat}&lon=${lon}`),
+            fetch('/api/threats'),
+            fetch('/api/signals/history?hours=48'),
+        ]);
+        const data = await predResp.json();
+        const allThreats = await threatResp.json();
+        const sigHistory = await histResp.json();
+
+        if (data.error) {
+            content.innerHTML = `<div class="drawer-error" style="padding:80px 48px">${data.error}</div>`;
+            return;
+        }
+
+        const locName = regionName || guessRegionName(lat, lon);
+        const threat = allThreats.find(z => z.name === locName) || allThreats.find(z => {
+            const d = Math.abs(z.center[0] - lat) + Math.abs(z.center[1] - lon);
+            return d < 15;
+        }) || null;
+
+        const color = riskColor(data.risk_score);
+        const pct = (data.risk_score * 100).toFixed(0);
+        const tColor = threat ? threatColor(threat.level) : 'rgba(120,160,180,0.4)';
+        const tPct = threat ? (threat.threat_score * 100).toFixed(0) : '--';
+
+        // ── Build detector gauges ──
+        let detectorHtml = '';
+        if (threat) {
+            const onsetScore = threat.geomag_onset?.score || 0;
+            const onsetColor = onsetScore > 0.5 ? 'rgba(220,70,50,0.7)' : onsetScore > 0.2 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)';
+            const onsetDetail = threat.geomag_onset?.signals?.length
+                ? threat.geomag_onset.signals.map(s => s.signal).join(', ')
+                : 'No onset detected';
+            const gauges = [
+                { label: 'Foreshock Rate', value: threat.rate_zscore_6h, unit: 'σ', max: 5,
+                  detail: `${threat.events_6h} events/6h`,
+                  color: threat.rate_zscore_6h > 3 ? 'rgba(220,70,50,0.7)' : threat.rate_zscore_6h > 2 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)' },
+                { label: 'b-value Shift', value: Math.abs(threat.b_delta), unit: '', max: 0.4,
+                  detail: threat.b_value_7d != null ? `${threat.b_value_7d.toFixed(2)} (7d) vs ${threat.b_value_30d?.toFixed(2)} (30d)` : 'Insufficient data',
+                  color: threat.b_delta > 0.2 ? 'rgba(220,70,50,0.7)' : threat.b_delta > 0.1 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)' },
+                { label: 'Rate Accel', value: threat.accel_score, unit: '', max: 1,
+                  detail: threat.accel_score > 0.25 ? 'Activity ramping up' : 'Steady rate',
+                  color: threat.accel_score > 0.5 ? 'rgba(220,70,50,0.7)' : threat.accel_score > 0.25 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)' },
+                { label: 'Mag Variance', value: (threat.mag_anomaly?.score || 0), unit: '', max: 1,
+                  detail: threat.mag_anomaly?.detail || 'No data',
+                  color: (threat.mag_anomaly?.score || 0) > 0.3 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)' },
+                { label: 'Geomag Onset', value: onsetScore, unit: '', max: 1,
+                  detail: onsetDetail,
+                  color: onsetColor },
+            ];
+            detectorHtml = gauges.map((g, i) => `
+                <div class="detector-gauge">
+                    <canvas class="analysis-gauge-arc" id="gauge-arc-${i}" style="width:80px;height:48px;display:block;margin:0 auto 6px"></canvas>
+                    <div style="text-align:center;font-size:16px;font-weight:600;color:${g.color};margin-top:-4px;font-variant-numeric:tabular-nums">${typeof g.value === 'number' ? (g.unit === 'σ' ? g.value.toFixed(1) + 'σ' : (g.value * 100).toFixed(0) + '%') : '--'}</div>
+                    <div style="text-align:center;font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px">${g.label}</div>
+                    <div style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);margin-top:2px">${g.detail}</div>
+                </div>`).join('');
+        }
+
+        // ── Active signals ──
+        let signalsHtml = '';
+        if (threat && threat.signals && threat.signals.length > 0) {
+            signalsHtml = threat.signals.map(s => {
+                const sColor = s.severity > 0.6 ? 'rgba(220,70,50,0.7)' : s.severity > 0.3 ? 'rgba(210,160,50,0.6)' : 'rgba(120,160,180,0.5)';
+                const sevBar = Math.min(100, s.severity * 100);
+                return `<div style="margin-bottom:10px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                        <div style="width:6px;height:6px;border-radius:50%;background:${sColor};flex-shrink:0"></div>
+                        <span style="font-size:11px;color:rgba(255,255,255,0.65);font-weight:500">${s.signal}</span>
+                        <div style="flex:1"></div>
+                        <span style="font-size:10px;color:${sColor}">${(s.severity * 100).toFixed(0)}%</span>
+                    </div>
+                    <div class="detector-gauge-bar" style="margin-left:14px"><div class="detector-gauge-fill" style="width:${sevBar}%;background:${sColor}"></div></div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.35);margin:4px 0 0 14px;line-height:1.4">${s.detail}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Quake list ──
+        let quakeHtml = '';
+        if (data.nearby_quakes && data.nearby_quakes.length > 0) {
+            quakeHtml = data.nearby_quakes.slice(0, 12).map(eq => {
+                const c = magColor(eq.magnitude);
+                const place = eq.place ? eq.place.replace(/^.+? of /, '') : `${eq.lat.toFixed(1)}, ${eq.lon.toFixed(1)}`;
+                return `<div class="analysis-quake-row">
+                    <div class="analysis-quake-mag" style="color:${c}">M${eq.magnitude.toFixed(1)}</div>
+                    <div class="analysis-quake-place">${place}</div>
+                    <div class="analysis-quake-time">${timeAgo(eq.timestamp)}</div>
+                </div>`;
+            }).join('');
+        } else {
+            quakeHtml = '<div class="drawer-empty">No nearby events in the past 7 days</div>';
+        }
+
+        // ── Geomagnetic rows ──
+        let geoHtml = '';
+        const geoItems = [];
+        if (data.kp != null) geoItems.push({ key: 'kp', label: 'Kp Index', value: data.kp, unit: '', histKey: 'noaa_swpc__kp_index' });
+        if (data.dst != null) geoItems.push({ key: 'dst', label: 'Dst Index', value: data.dst, unit: 'nT', histKey: 'noaa_swpc__dst_index' });
+        const readings = data.readings || {};
+        for (const [rKey, r] of Object.entries(readings)) {
+            if (rKey.includes('kp_index') || rKey.includes('dst_index')) continue;
+            geoItems.push({ key: rKey, label: r.label, value: r.value, unit: r.unit, histKey: rKey });
+        }
+        for (const item of geoItems) {
+            const status = geoStatusLabel(item.key, item.value);
+            const trend = geoTrend(item.histKey);
+            geoHtml += `<div class="geo-row" style="padding:4px 0">
+                <div class="geo-indicator ${status.cls}"></div>
+                <div class="geo-label" style="min-width:90px">${item.label}</div>
+                <div class="geo-value">${typeof item.value === 'number' ? item.value.toFixed(1) : item.value} ${item.unit}</div>
+                <div class="geo-trend ${trend.cls}">${trend.arrow}</div>
+                ${status.text ? `<span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:6px">${status.text}</span>` : ''}
+            </div>`;
+        }
+
+        // ── Outlook ──
+        const outlook = [];
+        if (threat && threat.level !== 'NORMAL') {
+            outlook.push(`Tier 1 detector classifies this zone as <strong>${threat.level}</strong> (${tPct}% threat). ${
+                threat.trend > 0.005 ? 'Score is currently <strong>rising</strong>.' : threat.trend < -0.005 ? 'Score is <strong>declining</strong>.' : 'Holding steady.'
+            }`);
+        }
+        if (threat && threat.rate_zscore_6h > 2) {
+            outlook.push(`Foreshock rate is ${threat.rate_zscore_6h.toFixed(1)}σ above baseline — this type of acceleration has historically preceded larger events in active sequences.`);
+        }
+        if (threat && threat.b_delta > 0.1) {
+            outlook.push(`b-value has declined from ${threat.b_value_30d?.toFixed(2)} to ${threat.b_value_7d?.toFixed(2)}. The magnitude distribution is shifting toward larger events — the fault is consolidating stress rather than releasing it in small events.`);
+        }
+        if (data.max_magnitude_7d >= 5.0) {
+            outlook.push(`M${data.max_magnitude_7d.toFixed(1)} event occurred recently. Aftershock probability remains elevated and may have increased Coulomb stress on adjacent segments.`);
+        }
+        if (data.kp >= 5) {
+            outlook.push(`Geomagnetic storm (Kp ${data.kp}) is active. Statistical correlation with increased seismicity has been observed in peer-reviewed studies.`);
+        }
+        if (threat && threat.geomag_onset?.score > 0.15) {
+            const onsetSigs = (threat.geomag_onset.signals || []).map(s => s.signal).join(', ');
+            const boostPct = threat.geomag_boost ? `+${(threat.geomag_boost * 100).toFixed(1)}%` : '';
+            outlook.push(`<strong>Geomagnetic onset detected</strong>: ${onsetSigs}. This is a leading indicator — sudden magnetospheric compression induces telluric currents in fault zones, adding stress to faults already near failure. Threat score boosted ${boostPct} for this zone.`);
+        }
+        if (data.fault_distance_km != null && data.fault_distance_km < 150) {
+            outlook.push(`Location is ${data.fault_distance_km.toFixed(0)} km from the nearest plate boundary — within the primary stress transfer zone.`);
+        }
+        if (outlook.length === 0) {
+            outlook.push('No anomalous signals detected. Continue standard monitoring.');
+        }
+
+        content.innerHTML = `
+            <div class="analysis-title">Full Analysis &mdash; ${locName}</div>
+
+            <div class="analysis-hero-row">
+                <div class="analysis-hero-block">
+                    <div class="analysis-hero-label">Composite Risk</div>
+                    <div class="analysis-pct" style="color:${color}">${pct}%</div>
+                    <div class="analysis-level">${data.risk_level}</div>
+                </div>
+                ${threat ? `<div class="analysis-hero-block">
+                    <div class="analysis-hero-label">Threat Detector</div>
+                    <div class="analysis-pct" style="color:${tColor}">${tPct}%</div>
+                    <div class="analysis-level">${threat.level}${threat.trend > 0.005 ? ' <span class="threat-trend rising">▲ rising</span>' : threat.trend < -0.005 ? ' <span class="threat-trend falling">▼ declining</span>' : ''}</div>
+                </div>` : ''}
+            </div>
+            <div class="analysis-region">24-hour forecast window</div>
+
+            <div class="analysis-metrics-strip">
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Fault Distance</div><div class="analysis-metric-value">${data.fault_distance_km != null ? data.fault_distance_km.toFixed(0) + '<span style="font-size:11px;opacity:0.5"> km</span>' : '--'}</div></div>
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Events (24h)</div><div class="analysis-metric-value">${threat ? threat.events_24h : '--'}</div></div>
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Events (7d)</div><div class="analysis-metric-value">${threat ? threat.events_7d : (data.regional_events_7d || 0)}</div></div>
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Events (30d)</div><div class="analysis-metric-value">${threat ? threat.events_30d : (data.regional_events_30d || '--')}</div></div>
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Max Mag (7d)</div><div class="analysis-metric-value">M${data.max_magnitude_7d ? data.max_magnitude_7d.toFixed(1) : '--'}</div></div>
+                <div class="analysis-metric-cell"><div class="analysis-metric-label">Kp Index</div><div class="analysis-metric-value">${data.kp != null ? data.kp.toFixed(1) : '--'}</div></div>
+            </div>
+
+            ${threat ? `<div class="analysis-section">
+                <div class="analysis-section-label">Threat Detection &mdash; Tier 1</div>
+                <div class="analysis-detector" style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">
+                    ${detectorHtml}
+                </div>
+            </div>` : ''}
+
+            ${signalsHtml ? `<div class="analysis-section"><div class="analysis-section-label">Active Signals</div>${signalsHtml}</div>` : ''}
+
+            <div class="analysis-columns">
+                <div>
+                    <div class="analysis-chart-wrap">
+                        <div class="analysis-chart-title">Kp Index &mdash; 48h</div>
+                        <canvas class="analysis-chart-canvas tall" id="chart-kp"></canvas>
+                    </div>
+                    <div class="analysis-chart-wrap">
+                        <div class="analysis-chart-title">Dst Index &mdash; 48h</div>
+                        <canvas class="analysis-chart-canvas tall" id="chart-dst"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <div class="analysis-chart-wrap">
+                        <div class="analysis-chart-title">GOES Mag |B| &mdash; 48h</div>
+                        <canvas class="analysis-chart-canvas tall" id="chart-goes"></canvas>
+                    </div>
+                    <div class="analysis-chart-wrap">
+                        <div class="analysis-chart-title">Ground Mag Z &mdash; 48h</div>
+                        <canvas class="analysis-chart-canvas tall" id="chart-magz"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            ${data.nearby_quakes && data.nearby_quakes.length > 0 ? `
+            <div class="analysis-section">
+                <div class="analysis-section-label">Magnitude Timeline &mdash; 7 days</div>
+                <div class="analysis-chart-wrap" style="margin-bottom:0">
+                    <canvas class="analysis-chart-canvas tall" id="chart-mag-timeline"></canvas>
+                </div>
+            </div>` : ''}
+
+            <div class="analysis-columns" style="margin-top:24px">
+                <div>
+                    <div class="analysis-section">
+                        <div class="analysis-section-label">Recent Activity</div>
+                        <div class="analysis-quakes">${quakeHtml}</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="analysis-section">
+                        <div class="analysis-section-label">Geomagnetic State</div>
+                        ${geoHtml || '<div class="drawer-empty">No readings</div>'}
+                    </div>
+                </div>
+            </div>
+
+            <div class="analysis-section">
+                <div class="analysis-section-label">Assessment</div>
+                <div class="analysis-outlook">${outlook.join('<br><br>')}</div>
+            </div>
+        `;
+
+        // ── Render charts after DOM insert ──
+        requestAnimationFrame(() => {
+            const kpData = sigHistory['noaa_swpc__kp_index']?.data || [];
+            const dstData = sigHistory['noaa_swpc__dst_index']?.data || [];
+            const goesData = sigHistory['goes_magnetometer__goes_mag_total']?.data || [];
+            const magzData = sigHistory['usgs_magnetometer__mag_z']?.data || [];
+
+            drawAreaChart(document.getElementById('chart-kp'), kpData, '#5a8abf', {
+                min: 0, max: 9, threshold: 5,
+                labels: ['48h ago', 'now'],
+            });
+            drawAreaChart(document.getElementById('chart-dst'), dstData, '#7a9b6a', {
+                threshold: -50,
+                labels: ['48h ago', 'now'],
+            });
+            drawAreaChart(document.getElementById('chart-goes'), goesData, '#b08a5a', {
+                labels: ['48h ago', 'now'],
+            });
+            drawAreaChart(document.getElementById('chart-magz'), magzData, '#8a7aaa', {
+                labels: ['48h ago', 'now'],
+            });
+
+            // Magnitude timeline
+            if (data.nearby_quakes && data.nearby_quakes.length > 0) {
+                const magCanvas = document.getElementById('chart-mag-timeline');
+                if (magCanvas) {
+                    const sorted = data.nearby_quakes.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    const magVals = sorted.map(q => ({ v: q.magnitude }));
+                    drawAreaChart(magCanvas, magVals, 'rgba(220,100,60,0.7)', {
+                        min: 0,
+                        labels: [timeAgo(sorted[0].timestamp), timeAgo(sorted[sorted.length - 1].timestamp)],
+                    });
+                }
+            }
+
+            // Gauge arcs
+            if (threat) {
+                const gOnset = threat.geomag_onset?.score || 0;
+                const gaugeData = [
+                    { value: Math.abs(threat.rate_zscore_6h), max: 5 },
+                    { value: Math.abs(threat.b_delta), max: 0.4 },
+                    { value: threat.accel_score, max: 1 },
+                    { value: threat.mag_anomaly?.score || 0, max: 1 },
+                    { value: gOnset, max: 1 },
+                ];
+                const gaugeColors = [
+                    threat.rate_zscore_6h > 3 ? 'rgba(220,70,50,0.7)' : threat.rate_zscore_6h > 2 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)',
+                    threat.b_delta > 0.2 ? 'rgba(220,70,50,0.7)' : threat.b_delta > 0.1 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)',
+                    threat.accel_score > 0.5 ? 'rgba(220,70,50,0.7)' : threat.accel_score > 0.25 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)',
+                    (threat.mag_anomaly?.score || 0) > 0.3 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)',
+                    gOnset > 0.5 ? 'rgba(220,70,50,0.7)' : gOnset > 0.2 ? 'rgba(210,160,50,0.6)' : 'rgba(90,140,190,0.5)',
+                ];
+                for (let i = 0; i < 5; i++) {
+                    drawGaugeArc(
+                        document.getElementById(`gauge-arc-${i}`),
+                        gaugeData[i].value, gaugeData[i].max,
+                        gaugeColors[i]
+                    );
+                }
+            }
+        });
+
+    } catch (e) {
+        content.innerHTML = `<div class="drawer-error" style="padding:80px 48px">${e.message}</div>`;
+    }
+}
+
+function closeAnalysis() {
+    const d = document.getElementById('analysis-drawer');
+    d.classList.remove('visible');
+    d.classList.remove('terminal-mode');
+}
+
+// ── Data Analysis Workbench ─────────────────────────────
+const WORKBENCH_FEATURES = [
+    // Geomagnetic
+    { id: 'kp', source: 'noaa_swpc', metric: 'kp_index', label: 'Kp Index', unit: '', category: 'Geomagnetic', thresholds: [{ v: 5, label: 'Storm' }] },
+    { id: 'dst', source: 'noaa_swpc', metric: 'dst_index', label: 'Dst Index', unit: 'nT', category: 'Geomagnetic', thresholds: [{ v: -50, label: 'Storm' }] },
+    { id: 'goes_bt', source: 'goes_magnetometer', metric: 'goes_mag_total', label: 'GOES |B|', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'goes_hp', source: 'goes_magnetometer', metric: 'goes_mag_hp', label: 'GOES Hp', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'goes_he', source: 'goes_magnetometer', metric: 'goes_mag_he', label: 'GOES He', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'goes_hn', source: 'goes_magnetometer', metric: 'goes_mag_hn', label: 'GOES Hn', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'ground_z', source: 'intermagnet', metric: 'imag_z', label: 'Ground Mag Z', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'ground_x', source: 'intermagnet', metric: 'imag_x', label: 'Ground Mag X', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'ground_y', source: 'intermagnet', metric: 'imag_y', label: 'Ground Mag Y', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    { id: 'ground_f', source: 'intermagnet', metric: 'imag_f', label: 'Ground Mag F', unit: 'nT', category: 'Geomagnetic', thresholds: [] },
+    // Solar
+    { id: 'sw_speed', source: 'noaa_swpc', metric: 'solar_wind_speed', label: 'Solar Wind Speed', unit: 'km/s', category: 'Solar', thresholds: [{ v: 500, label: 'Elevated' }] },
+    { id: 'sw_density', source: 'noaa_swpc', metric: 'solar_wind_density', label: 'Solar Wind Density', unit: 'p/cm3', category: 'Solar', thresholds: [] },
+    { id: 'imf_bt', source: 'noaa_swpc', metric: 'imf_bt', label: 'IMF Bt', unit: 'nT', category: 'Solar', thresholds: [] },
+    { id: 'imf_bz', source: 'noaa_swpc', metric: 'imf_bz', label: 'IMF Bz', unit: 'nT', category: 'Solar', thresholds: [{ v: -5, label: 'Southward' }] },
+    { id: 'ief', source: 'derived_ief', metric: 'ief', label: 'IEF', unit: 'mV/m', category: 'Solar', thresholds: [] },
+    { id: 'proton', source: 'noaa_goes', metric: 'proton_flux', label: 'Proton Flux', unit: 'pfu', category: 'Solar', thresholds: [] },
+    { id: 'electron', source: 'noaa_goes', metric: 'electron_flux', label: 'Electron Flux', unit: '', category: 'Solar', thresholds: [] },
+    { id: 'neutron', source: 'nmdb_cosmic', metric: 'neutron_count', label: 'Neutron Count', unit: '', category: 'Solar', thresholds: [] },
+    { id: 'xray', source: 'goes_xray', metric: 'xray_flux', label: 'X-ray Flux', unit: 'W/m2', category: 'Solar', thresholds: [] },
+    // Tidal
+    { id: 'tidal_pot', source: 'computed_tides', metric: 'tidal_potential', label: 'Tidal Potential', unit: '', category: 'Tidal', thresholds: [] },
+    { id: 'tidal_strain', source: 'computed_tides', metric: 'tidal_strain_rate', label: 'Tidal Strain Rate', unit: '', category: 'Tidal', thresholds: [] },
+    // Ocean
+    { id: 'water_level', source: 'noaa_tides', metric: 'water_level', label: 'Water Level', unit: 'm', category: 'Ocean', thresholds: [] },
+    // Other
+    { id: 'olr', source: 'noaa_olr', metric: 'olr', label: 'OLR', unit: 'W/m2', category: 'Other', thresholds: [] },
+    { id: 'gravity', source: 'grace_gravity', metric: 'gravity_anomaly', label: 'Gravity Anomaly', unit: 'cm', category: 'Other', thresholds: [] },
+    { id: 'pressure', source: 'nws_weather', metric: 'barometric_pressure', label: 'Barometric Pressure', unit: 'mb', category: 'Other', thresholds: [] },
+];
+
+const SIGNAL_FEATURE_MAP = {
+    'dst':        ['dst'],
+    'kp':         ['kp'],
+    'solar_wind': ['sw_speed', 'sw_density'],
+    'solar wind': ['sw_speed', 'sw_density'],
+    'geomag':     ['kp', 'dst', 'goes_bt'],
+    'magnetic':   ['goes_bt', 'goes_hp', 'ground_z', 'ground_f'],
+    'magnetospheric': ['goes_bt', 'goes_hp'],
+    'compression': ['goes_bt', 'goes_hp'],
+    'tidal':      ['tidal_pot', 'tidal_strain'],
+    'gravitational': ['tidal_pot', 'tidal_strain'],
+    'imf':        ['imf_bt', 'imf_bz'],
+    'proton':     ['proton'],
+    'electron':   ['electron'],
+    'x-ray':      ['xray'],
+    'xray':       ['xray'],
+    'neutron':    ['neutron'],
+    'olr':        ['olr'],
+    'water':      ['water_level'],
+    'pressure':   ['pressure'],
+    'gravity':    ['gravity'],
+    'ief':        ['ief'],
+};
+
+const workbenchState = {
+    active: new Set(),
+    timeHours: 6,
+    zoneName: '',
+    zoneData: null,
+    chartData: {},
+    annotations: {},
+};
+
+function saveWbPrefs() {
+    try {
+        localStorage.setItem('qw_wb_prefs', JSON.stringify({
+            features: [...workbenchState.active],
+            timeHours: workbenchState.timeHours,
+        }));
+    } catch (e) {}
+}
+
+function loadWbPrefs() {
+    try {
+        const raw = localStorage.getItem('qw_wb_prefs');
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+}
+
+function getFeatureById(id) {
+    return WORKBENCH_FEATURES.find(f => f.id === id);
+}
+
+function buildWorkbenchSidebar() {
+    const sidebar = document.getElementById('wb-sidebar');
+    const categories = {};
+    for (const f of WORKBENCH_FEATURES) {
+        if (!categories[f.category]) categories[f.category] = [];
+        categories[f.category].push(f);
+    }
+    let html = '';
+    for (const [cat, feats] of Object.entries(categories)) {
+        html += `<div class="wb-cat-header" data-cat="${cat}">${cat}<span class="wb-cat-chevron">&#9660;</span></div>`;
+        html += `<div class="wb-cat-items" data-cat="${cat}">`;
+        for (const f of feats) {
+            const activeCls = workbenchState.active.has(f.id) ? ' active' : '';
+            html += `<div class="wb-feat-row${activeCls}" data-fid="${f.id}"><div class="wb-feat-check"></div><span class="wb-feat-label">${f.label}</span></div>`;
+        }
+        html += '</div>';
+    }
+    sidebar.innerHTML = html;
+
+    sidebar.querySelectorAll('.wb-cat-header').forEach(hdr => {
+        hdr.addEventListener('click', () => {
+            hdr.classList.toggle('collapsed');
+            const items = sidebar.querySelector(`.wb-cat-items[data-cat="${hdr.dataset.cat}"]`);
+            if (items) items.classList.toggle('collapsed');
+        });
+    });
+
+    sidebar.querySelectorAll('.wb-feat-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const fid = row.dataset.fid;
+            if (workbenchState.active.has(fid)) {
+                workbenchState.active.delete(fid);
+                row.classList.remove('active');
+                removeWorkbenchChart(fid);
+            } else {
+                workbenchState.active.add(fid);
+                row.classList.add('active');
+                addWorkbenchChart(fid);
+            }
+            saveWbPrefs();
+        });
+    });
+}
+
+function ensureChartGrid() {
+    const main = document.getElementById('wb-main');
+    let grid = main.querySelector('.wb-chart-grid');
+    if (!grid) {
+        main.innerHTML = '';
+        grid = document.createElement('div');
+        grid.className = 'wb-chart-grid';
+        main.appendChild(grid);
+    }
+    return grid;
+}
+
+async function addWorkbenchChart(fid) {
+    const feat = getFeatureById(fid);
+    if (!feat) return;
+    const grid = ensureChartGrid();
+
+    // Remove empty state
+    const empty = document.getElementById('wb-main').querySelector('.wb-empty');
+    if (empty) empty.remove();
+
+    // Create card
+    const card = document.createElement('div');
+    card.className = 'wb-chart-card';
+    card.id = 'wb-card-' + fid;
+
+    // Build annotation badges
+    let annoBadges = '';
+    const annos = workbenchState.annotations[fid];
+    if (annos && annos.length > 0) {
+        annoBadges = '<div class="wb-annotation">' +
+            annos.map(a => {
+                const cls = a.severity > 0.6 ? '' : a.severity > 0.3 ? ' elevated' : ' watch';
+                return `<span class="wb-anno-badge${cls}">${a.label}</span>`;
+            }).join('') + '</div>';
+    }
+
+    card.innerHTML = `
+        <div class="wb-chart-header">
+            <span class="wb-chart-title">${feat.label}<span class="wb-chart-unit">${feat.unit}</span><span class="wb-chart-val" id="wb-val-${fid}"></span></span>
+            <div class="wb-chart-remove" data-fid="${fid}">&#10005;</div>
+        </div>
+        ${annoBadges}
+        <div class="wb-chart-loading">Loading...</div>
+    `;
+    grid.appendChild(card);
+
+    card.querySelector('.wb-chart-remove').addEventListener('click', () => {
+        workbenchState.active.delete(fid);
+        removeWorkbenchChart(fid);
+        const row = document.querySelector(`.wb-feat-row[data-fid="${fid}"]`);
+        if (row) row.classList.remove('active');
+        saveWbPrefs();
+    });
+
+    // Fetch data
+    await fetchAndRenderChart(fid, card);
+}
+
+async function fetchAndRenderChart(fid, card) {
+    const feat = getFeatureById(fid);
+    if (!feat || !card) return;
+
+    const now = new Date();
+    const hours = workbenchState.timeHours;
+    const start = new Date(now.getTime() - hours * 3600000);
+    const bucketMap = { 6: 1, 24: 3, 48: 5, 168: 15, 720: 60 };
+    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 700));
+    const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('API error');
+        const samples = await resp.json();
+
+        workbenchState.chartData[fid] = samples;
+
+        if (!samples || samples.length === 0) {
+            const loading = card.querySelector('.wb-chart-loading');
+            if (loading) loading.textContent = 'No data for this range';
+            return;
+        }
+
+        const latestVal = samples[samples.length - 1].value;
+        const valEl = card.querySelector('.wb-chart-val');
+        if (valEl) valEl.textContent = formatAxisVal(latestVal);
+
+        // Replace loading with canvas + labels
+        const loading = card.querySelector('.wb-chart-loading');
+        if (loading) loading.remove();
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'wb-chart-canvas';
+        canvas.id = 'wb-canvas-' + fid;
+
+        const labelRow = document.createElement('div');
+        labelRow.className = 'wb-chart-labels';
+
+        // Time labels
+        const oldest = new Date(samples[0].timestamp);
+        const newest = new Date(samples[samples.length - 1].timestamp);
+        labelRow.innerHTML = `<span class="wb-chart-xlabel">${formatChartTime(oldest)}</span><span class="wb-chart-xlabel">${formatChartTime(newest)}</span>`;
+
+        // Remove any existing canvas/labels (for re-render)
+        const oldCanvas = card.querySelector('.wb-chart-canvas');
+        const oldLabels = card.querySelector('.wb-chart-labels');
+        const oldYmin = card.querySelector('.wb-chart-ylabel.bottom');
+        const oldYmax = card.querySelector('.wb-chart-ylabel.top');
+        if (oldCanvas) oldCanvas.remove();
+        if (oldLabels) oldLabels.remove();
+        if (oldYmin) oldYmin.remove();
+        if (oldYmax) oldYmax.remove();
+
+        card.appendChild(canvas);
+        card.appendChild(labelRow);
+
+        // Y-axis labels
+        const values = samples.map(s => s.value);
+        const minV = Math.min(...values);
+        const maxV = Math.max(...values);
+        const yMaxEl = document.createElement('span');
+        yMaxEl.className = 'wb-chart-ylabel top';
+        yMaxEl.textContent = formatAxisVal(maxV);
+        const yMinEl = document.createElement('span');
+        yMinEl.className = 'wb-chart-ylabel bottom';
+        yMinEl.textContent = formatAxisVal(minV);
+        card.appendChild(yMaxEl);
+        card.appendChild(yMinEl);
+
+        requestAnimationFrame(() => {
+            drawWorkbenchChart(canvas, samples, feat);
+        });
+    } catch (e) {
+        const loading = card.querySelector('.wb-chart-loading');
+        if (loading) {
+            loading.textContent = 'Failed to load';
+            loading.style.color = 'rgba(220,70,50,0.4)';
+        }
+    }
+}
+
+function formatAxisVal(v) {
+    if (v === 0) return '0';
+    if (Math.abs(v) >= 10000) return v.toExponential(1);
+    if (Math.abs(v) >= 100) return v.toFixed(0);
+    if (Math.abs(v) >= 1) return v.toFixed(1);
+    if (Math.abs(v) >= 0.01) return v.toFixed(3);
+    return v.toExponential(1);
+}
+
+function formatChartTime(date) {
+    const h = String(date.getUTCHours()).padStart(2, '0');
+    const m = String(date.getUTCMinutes()).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    const mo = String(date.getUTCMonth() + 1).padStart(2, '0');
+    if (workbenchState.timeHours <= 48) return `${h}:${m}`;
+    return `${mo}/${d} ${h}:${m}`;
+}
+
+function drawWorkbenchChart(canvas, samples, feat) {
+    if (!canvas || !samples || samples.length < 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const values = samples.map(s => s.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const padX = 4, padY = 6;
+
+    // Grid lines (4 horizontal)
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+        const gy = padY + ((h - padY * 2) * i) / 3;
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(w, gy);
+        ctx.stroke();
+    }
+
+    // Threshold lines
+    if (feat.thresholds) {
+        for (const t of feat.thresholds) {
+            const ty = h - padY - ((t.v - min) / range) * (h - padY * 2);
+            if (ty > padY && ty < h - padY) {
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = 'rgba(220,70,50,0.15)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, ty);
+                ctx.lineTo(w, ty);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+    }
+
+    // Line
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    for (let i = 0; i < values.length; i++) {
+        const x = padX + (i / (values.length - 1)) * (w - padX * 2);
+        const y = h - padY - ((values[i] - min) / range) * (h - padY * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Gradient fill
+    const lastX = padX + ((values.length - 1) / (values.length - 1)) * (w - padX * 2);
+    ctx.lineTo(lastX, h);
+    ctx.lineTo(padX, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+}
+
+function removeWorkbenchChart(fid) {
+    const card = document.getElementById('wb-card-' + fid);
+    if (card) card.remove();
+    delete workbenchState.chartData[fid];
+
+    // If no charts remain, show empty state
+    if (workbenchState.active.size === 0) {
+        const main = document.getElementById('wb-main');
+        main.innerHTML = '<div class="wb-empty">Select features from the sidebar to begin analysis</div>';
+    }
+}
+
+async function refreshAllWorkbenchCharts() {
+    for (const fid of workbenchState.active) {
+        const card = document.getElementById('wb-card-' + fid);
+        if (card) {
+            // Show loading on existing chart
+            const canvas = card.querySelector('.wb-chart-canvas');
+            const labels = card.querySelector('.wb-chart-labels');
+            const yMin = card.querySelector('.wb-chart-ylabel.bottom');
+            const yMax = card.querySelector('.wb-chart-ylabel.top');
+            if (canvas) canvas.remove();
+            if (labels) labels.remove();
+            if (yMin) yMin.remove();
+            if (yMax) yMax.remove();
+            const existing = card.querySelector('.wb-chart-loading');
+            if (!existing) {
+                const loading = document.createElement('div');
+                loading.className = 'wb-chart-loading';
+                loading.textContent = 'Loading...';
+                card.appendChild(loading);
+            }
+            fetchAndRenderChart(fid, card);
+        }
+    }
+}
+
+function mapSignalsToFeatures(signals) {
+    const annotations = {};
+    if (!signals || !Array.isArray(signals)) return annotations;
+
+    for (const sig of signals) {
+        const sigText = (sig.signal || '').toLowerCase();
+        for (const [keyword, featureIds] of Object.entries(SIGNAL_FEATURE_MAP)) {
+            if (sigText.includes(keyword)) {
+                for (const fid of featureIds) {
+                    if (!annotations[fid]) annotations[fid] = [];
+                    const alreadyHas = annotations[fid].some(a => a.label === sig.signal);
+                    if (!alreadyHas) {
+                        annotations[fid].push({
+                            label: sig.signal.length > 30 ? sig.signal.slice(0, 28) + '..' : sig.signal,
+                            severity: sig.severity || 0.3,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    return annotations;
+}
+
+function getDefaultFeatures(zoneData) {
+    // Default features based on zone signals
+    const defaults = new Set(['kp', 'dst', 'sw_speed']);
+    if (!zoneData || !zoneData.signals) return defaults;
+
+    for (const sig of zoneData.signals) {
+        const sigText = (sig.signal || '').toLowerCase();
+        for (const [keyword, featureIds] of Object.entries(SIGNAL_FEATURE_MAP)) {
+            if (sigText.includes(keyword)) {
+                for (const fid of featureIds) defaults.add(fid);
+            }
+        }
+    }
+    // Cap at 6 defaults max
+    const arr = [...defaults];
+    return new Set(arr.slice(0, 6));
+}
+
+async function openWorkbench(zoneName, zoneData) {
+    const overlay = document.getElementById('wb-overlay');
+    const nameEl = document.getElementById('wb-zone-name');
+
+    workbenchState.zoneName = zoneName || 'Zone Analysis';
+    workbenchState.zoneData = zoneData || null;
+    workbenchState.chartData = {};
+
+    nameEl.textContent = workbenchState.zoneName;
+
+    workbenchState.annotations = zoneData ? mapSignalsToFeatures(zoneData.signals) : {};
+
+    const saved = loadWbPrefs();
+    if (saved && saved.features && saved.features.length > 0) {
+        workbenchState.active = new Set(saved.features);
+        workbenchState.timeHours = saved.timeHours || 6;
+    } else {
+        workbenchState.active = getDefaultFeatures(zoneData);
+        workbenchState.timeHours = 6;
+    }
+
+    buildWorkbenchSidebar();
+
+    document.querySelectorAll('.wb-time-btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.hours) === workbenchState.timeHours);
+    });
+
+    // Clear main and populate charts
+    const main = document.getElementById('wb-main');
+    main.innerHTML = '';
+
+    overlay.classList.add('visible');
+
+    // Add charts for default features
+    for (const fid of workbenchState.active) {
+        await addWorkbenchChart(fid);
+    }
+
+    // Add nearest station seismograph(s)
+    stopAllEmbeddedSeismos();
+    const lat = zoneData?.center?.[0];
+    const lon = zoneData?.center?.[1];
+    if (lat != null && lon != null) {
+        const nearest = findNearestStations(lat, lon, 2);
+        if (nearest.length > 0) {
+            let seismoHtml = '<div class="wb-seismo-section"><div class="wb-seismo-title">Nearest Stations — Live Seismograph</div>';
+            for (let i = 0; i < nearest.length; i++) {
+                seismoHtml += `<div class="embedded-seismo-wrap" id="wb-seismo-${i}"></div>`;
+            }
+            seismoHtml += '</div>';
+            main.insertAdjacentHTML('beforeend', seismoHtml);
+            requestAnimationFrame(() => {
+                for (let i = 0; i < nearest.length; i++) {
+                    startEmbeddedSeismo(`wb-seismo-${i}`, nearest[i].station, nearest[i].name, '6h');
+                }
+            });
+        }
+    }
+}
+
+function closeWorkbench() {
+    stopAllEmbeddedSeismos();
+    const overlay = document.getElementById('wb-overlay');
+    overlay.classList.remove('visible');
+    workbenchState.active.clear();
+    workbenchState.chartData = {};
+    workbenchState.annotations = {};
+}
+
+function renderMarkdown(md) {
+    let html = md
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/\*\*(.+?)\*\*/g, (_, t) => {
+            if (/CRITICAL|IMMEDIATE/i.test(t)) return '<strong class="alert-text">' + t + '</strong>';
+            if (/ELEVATED|HIGH|WARNING/i.test(t)) return '<strong class="elevated-text">' + t + '</strong>';
+            return '<strong>' + t + '</strong>';
+        })
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^\| *(.+)$/gm, (_, row) => {
+            const cells = row.split('|').map(c => c.trim()).filter(Boolean);
+            return '<tr>' + cells.map(c => {
+                if (/CRITICAL|IMMEDIATE/i.test(c)) return '<td class="alert">' + c + '</td>';
+                if (/ELEVATED|HIGH/i.test(c)) return '<td class="elevated">' + c + '</td>';
+                return '<td>' + c + '</td>';
+            }).join('') + '</tr>';
+        })
+        .replace(/^- (.+)$/gm, '<li>$1</li>');
+
+    html = html.replace(/(<tr>.*<\/tr>\n?)+/gs, match => {
+        const rows = match.trim().split('\n').filter(r => r.startsWith('<tr>'));
+        if (rows.length < 2) return match;
+        const sepRow = rows[1];
+        if (sepRow.includes('---')) {
+            const header = rows[0].replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>');
+            return '<table>' + header + rows.slice(2).join('\n') + '</table>';
+        }
+        return '<table>' + rows.join('\n') + '</table>';
+    });
+
+    html = html.replace(/(<li>.*<\/li>\n?)+/gs, match => '<ul>' + match + '</ul>');
+
+    html = html.split('\n\n').map(block => {
+        block = block.trim();
+        if (!block) return '';
+        if (block.startsWith('<h3>') || block.startsWith('<ul>') || block.startsWith('<ol>') || block.startsWith('<table>')) return block;
+        return '<p>' + block + '</p>';
+    }).join('\n');
+
+    return html;
+}
+
+async function openAiAnalysis(eqId, mag, place) {
+    const drawer = document.getElementById('analysis-drawer');
+    const content = document.getElementById('analysis-content');
+    drawer.classList.add('terminal-mode');
+
+    const termHeader = `<div class="terminal-header">
+            <div class="terminal-dots"><div class="terminal-dot active"></div><div class="terminal-dot"></div><div class="terminal-dot"></div></div>
+            <div class="terminal-title">seismiclab — ai analysis — M${parseFloat(mag).toFixed(1)} ${place}</div>
+            <div class="terminal-model">opus-4.6</div>
+        </div>`;
+    content.innerHTML = termHeader +
+        '<div class="terminal-loading"><div class="terminal-spinner"></div>fetching analysis...</div>';
+    drawer.classList.add('visible');
+    hideEqDetail();
+
+    try {
+        let resp = await fetch('/api/event-analyses/' + encodeURIComponent(eqId) + '/llm');
+        if (resp.status === 404) {
+            content.querySelector('.terminal-loading').innerHTML =
+                '<div class="terminal-spinner"></div>generating analysis (this takes ~90s)...';
+            resp = await fetch('/api/event-analyses/llm/run/' + encodeURIComponent(eqId));
+        }
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            content.querySelector('.terminal-loading').outerHTML =
+                '<div class="terminal-error">analysis unavailable: ' + (err.error || resp.statusText) + '</div>';
+            return;
+        }
+        const data = await resp.json();
+        const bodyHtml = renderMarkdown(data.analysis || 'No analysis content.');
+        content.innerHTML = termHeader + '<div class="terminal-body">' + bodyHtml + '</div>';
+    } catch (e) {
+        content.querySelector('.terminal-loading').outerHTML =
+            '<div class="terminal-error">Connection failed: ' + e.message + '</div>';
+    }
+}
+
+// ── Colors & helpers ─────────────────────────────────────
+function magColor(mag) {
+    if (mag >= 7.0) return 'rgba(220,80,60,0.9)';
+    if (mag >= 6.0) return 'rgba(210,100,60,0.8)';
+    if (mag >= 5.0) return 'rgba(200,140,60,0.7)';
+    if (mag >= 4.0) return 'rgba(180,160,80,0.6)';
+    if (mag >= 3.0) return 'rgba(130,170,200,0.5)';
+    return 'rgba(100,150,200,0.4)';
+}
+
+function magSize(mag) {
+    if (mag >= 7.0) return 14;
+    if (mag >= 6.0) return 11;
+    if (mag >= 5.0) return 8;
+    if (mag >= 4.0) return 6;
+    if (mag >= 3.0) return 4;
+    return 3;
+}
+
+function buildEqMarkerHTML(mag) {
+    const color = magColor(mag);
+    const core = magSize(mag);
+    const orbit1 = core * 3;
+    const orbit2 = core * 2.2;
+    const glow = mag >= 7.0 ? 10 : mag >= 6.0 ? 7 : mag >= 5.0 ? 4 : mag >= 4.0 ? 2 : 0;
+    const dur1 = mag >= 7.0 ? 2.5 : mag >= 6.0 ? 3.5 : mag >= 5.0 ? 5 : 7;
+    const dur2 = mag >= 7.0 ? 1.8 : mag >= 6.0 ? 2.5 : mag >= 5.0 ? 3.5 : 5;
+    const orbitW = mag >= 6.0 ? 1.5 : 1;
+    const o2opacity = mag >= 5.0 ? 0.5 : 0.3;
+    const hasOrbits = mag >= 4.0;
+
+    const orbits = hasOrbits
+        ? `<div class="eq-orbit eq-orbit-1"></div><div class="eq-orbit eq-orbit-2"></div>`
+        : '';
+
+    return `<div class="eq-marker" style="--c:${color};--s:${core}px;--o:${orbit1}px;--o2:${orbit2}px;--glow:${glow}px;--dur:${dur1}s;--dur2:${dur2}s;--ow:${orbitW}px;--o2a:${o2opacity}">`
+        + `<div class="eq-core"></div>${orbits}</div>`;
+}
+
+function riskColor(score) {
+    if (score >= 0.7)  return 'rgba(220,70,50,0.85)';
+    if (score >= 0.45) return 'rgba(210,140,50,0.75)';
+    if (score >= 0.2)  return 'rgba(160,170,70,0.65)';
+    return 'rgba(80,180,120,0.6)';
+}
+
+function timeAgo(ts) {
+    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (diff < 0) return 'just now';
+    if (diff < 60)    return `${Math.round(diff)}s ago`;
+    if (diff < 3600)  return `${Math.round(diff / 60)}m ago`;
+    if (diff < 86400) return `${(diff / 3600).toFixed(1)}h ago`;
+    return `${Math.round(diff / 86400)}d ago`;
+}
+
+function hexToRgba(hex, a) {
+    if (hex.startsWith('rgba')) return hex;
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function sparkColor(key) {
+    if (key.includes('kp')) return '#5a8abf';
+    if (key.includes('dst')) return '#7a9b6a';
+    if (key.includes('goes')) return '#b08a5a';
+    if (key.includes('mag')) return '#8a7aaa';
+    return '#6a8a9a';
+}
+
+// ── Sparkline ────────────────────────────────────────────
+function drawSparkline(canvas, data, color) {
+    if (!canvas || !data || data.length < 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    const values = data.map(d => typeof d === 'number' ? d : d.v);
+    const min = Math.min(...values), max = Math.max(...values);
+    const range = max - min || 1;
+    const pad = 2;
+    const points = [];
+    for (let i = 0; i < values.length; i++) {
+        const x = (i / (values.length - 1)) * w;
+        const y = h - pad - ((values[i] - min) / range) * (h - pad * 2);
+        points.push([x, y]);
+    }
+
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+        if (i === 0) ctx.moveTo(points[i][0], points[i][1]);
+        else ctx.lineTo(points[i][0], points[i][1]);
+    }
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(255,255,255,0.03)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+        if (i === 0) ctx.moveTo(points[i][0], points[i][1]);
+        else ctx.lineTo(points[i][0], points[i][1]);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+}
+
+// ── Earthquake markers ───────────────────────────────────
+function updateEarthquakeMarkers(quakes) {
+    const cutoff = new Date(Date.now() - state.filterHours * 3600000).toISOString();
+    for (const eq of quakes) {
+        if (eq.lat == null || eq.lon == null) continue;
+        if (!state.eqMarkers[eq.id]) {
+            const el = document.createElement('div');
+            el.innerHTML = buildEqMarkerHTML(eq.magnitude);
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', (e) => { e.stopPropagation(); showEqDetail(eq); });
+            const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat([eq.lon, eq.lat]);
+            state.eqMarkers[eq.id] = { marker: m, mag: eq.magnitude, ts: eq.timestamp, visible: false };
+        }
+        const entry = state.eqMarkers[eq.id];
+        const visible = eq.magnitude >= state.filterMag && eq.timestamp >= cutoff;
+        if (visible && !entry.visible) { entry.marker.addTo(map); entry.visible = true; }
+        if (!visible && entry.visible) { entry.marker.remove(); entry.visible = false; }
+    }
+}
+
+function applyMapFilter() {
+    const cutoff = new Date(Date.now() - state.filterHours * 3600000).toISOString();
+    for (const [id, entry] of Object.entries(state.eqMarkers)) {
+        const visible = entry.mag >= state.filterMag && entry.ts >= cutoff;
+        if (visible && !entry.visible) { entry.marker.addTo(map); entry.visible = true; }
+        if (!visible && entry.visible) { entry.marker.remove(); entry.visible = false; }
+    }
+}
+
+// ── Seismic station markers ──────────────────────────────
+function updateStationMarkers(stations) {
+    state.seedlinkStations = stations;
+    for (const stn of stations) {
+        if (stn.lat == null || stn.lon == null) continue;
+        const key = stn.station;
+        const connected = stn.connected;
+        const triggered = stn.triggered;
+        const ratio = stn.sta_lta_ratio || 0;
+
+        const isSelected = state.seismoStation === key;
+        const color = triggered ? '#dc4632' : connected ? 'rgba(80,200,120,0.7)' : 'rgba(255,255,255,0.15)';
+        const glow = triggered ? 'box-shadow:0 0 8px rgba(220,70,50,0.6)' : isSelected ? 'box-shadow:0 0 10px rgba(80,200,120,0.5)' : '';
+        const size = triggered ? 10 : isSelected ? 10 : 7;
+        const border = isSelected ? 'border:2px solid rgba(80,200,120,0.9)' : 'border:1px solid rgba(255,255,255,0.3)';
+
+        const html = `<div style="width:${size}px;height:${size}px;background:${color};${border};border-radius:2px;${glow};cursor:pointer" title="${stn.name} (${key}) STA/LTA: ${ratio.toFixed(2)}"></div>`;
+        const tipHtml = `<b>${stn.name}</b><br>${key}<br>STA/LTA: ${ratio.toFixed(2)}${triggered ? '<br><span style="color:#dc4632">TRIGGERED</span>' : ''}<br><span style="color:rgba(80,200,120,0.5);font-size:10px">click for seismograph</span>`;
+
+        if (state.seismoStation === key) {
+            const ampEl = document.getElementById('seismo-amp');
+            const ratEl = document.getElementById('seismo-ratio');
+            if (ampEl) ampEl.textContent = `peak: ${stn.peak_amplitude?.toFixed(0) || '—'}`;
+            if (ratEl) ratEl.textContent = `STA/LTA: ${ratio.toFixed(2)}`;
+        }
+
+        if (state.stationMarkers[key]) {
+            state.stationMarkers[key].getElement().innerHTML = html;
+            state.stationMarkers[key]._tipHtml = tipHtml;
+        } else {
+            const el = document.createElement('div');
+            el.innerHTML = html;
+            el.addEventListener('click', () => openSeismograph(key, stn.name));
+            const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat([stn.lon, stn.lat])
+                .addTo(map);
+            setTooltip(m, tipHtml);
+            state.stationMarkers[key] = m;
+        }
+    }
+}
+
+// ── Live Seismograph ────────────────────────────────────
+function openSeismograph(stationKey, stationName) {
+    closeSeismograph();
+    state.seismoStation = stationKey;
+    state.seismoBuffer = [];
+    state.seismoEnvelope = [];
+    state.seismoScale = 'live';
+    state.seismoMode = 'raw';
+    state.seismoDisplayMode = 'waveform';
+    state.seismoResonance = null;
+
+    const panel = document.getElementById('seismograph-panel');
+    panel.style.display = '';
+    document.getElementById('seismo-station').textContent = stationKey;
+    document.getElementById('seismo-name').textContent = stationName || '';
+    document.getElementById('seismo-amp').textContent = '';
+    document.getElementById('seismo-ratio').textContent = '';
+
+    document.querySelectorAll('.seismo-scale-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.scale === 'live');
+    });
+    document.querySelectorAll('.seismo-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === 'waveform');
+    });
+    document.getElementById('seismo-scales').style.display = '';
+
+    const canvas = document.getElementById('seismo-canvas');
+    canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+    canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
+
+    connectSeismoWs(stationKey);
+}
+
+function closeSeismograph() {
+    state.seismoStation = null;
+    state.seismoBuffer = [];
+    state.seismoResonance = null;
+    document.getElementById('seismograph-panel').style.display = 'none';
+    if (state.seismoInterval) { clearInterval(state.seismoInterval); state.seismoInterval = null; }
+    disconnectSeismoWs();
+    if (state.seismoRaf) { cancelAnimationFrame(state.seismoRaf); state.seismoRaf = null; }
+}
+
+function setSeismoDisplayMode(mode) {
+    state.seismoDisplayMode = mode;
+    document.querySelectorAll('.seismo-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    });
+
+    if (mode === 'resonance') {
+        document.getElementById('seismo-scales').style.display = 'none';
+        if (state.seismoRaf) { cancelAnimationFrame(state.seismoRaf); state.seismoRaf = null; }
+        if (state.seismoInterval) { clearInterval(state.seismoInterval); state.seismoInterval = null; }
+        disconnectSeismoWs();
+        document.getElementById('seismo-channel').textContent = '2-50 mHz';
+        fetchResonance();
+        state.seismoInterval = setInterval(fetchResonance, 30000);
+    } else {
+        document.getElementById('seismo-scales').style.display = '';
+        document.getElementById('seismo-channel').textContent = 'BHZ';
+        if (state.seismoInterval) { clearInterval(state.seismoInterval); state.seismoInterval = null; }
+        setSeismoScale(state.seismoScale || 'live');
+    }
+}
+
+async function fetchResonance() {
+    if (!state.seismoStation) return;
+    try {
+        const resp = await fetch(`/api/seedlink/resonance/${state.seismoStation}`);
+        const data = await resp.json();
+        if (data.samples && data.samples.length > 0) {
+            state.seismoBuffer = data.samples;
+            state.seismoSampleRate = data.sample_rate || 5;
+            state.seismoMode = 'raw';
+            state.seismoScale = 'live';
+            drawSeismograph();
+        }
+    } catch (e) { /* retry next interval */ }
+}
+
+function connectSeismoWs(stationKey) {
+    disconnectSeismoWs();
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws/seismograph/${stationKey}`);
+    state.seismoWs = ws;
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init') {
+            state.seismoBuffer = msg.samples || [];
+            state.seismoSampleRate = msg.sr || 5;
+            state.seismoMode = 'raw';
+        } else if (msg.type === 'update') {
+            if (state.seismoScale !== 'live') return;
+            const sr = msg.sr || state.seismoSampleRate;
+            state.seismoSampleRate = sr;
+            state.seismoBuffer.push(...(msg.samples || []));
+            const maxSamples = Math.ceil(3600 * sr);
+            if (state.seismoBuffer.length > maxSamples) {
+                state.seismoBuffer = state.seismoBuffer.slice(-maxSamples);
+            }
+        }
+    };
+    ws.onclose = () => { state.seismoWs = null; };
+
+    startLiveDrawLoop();
+}
+
+function disconnectSeismoWs() {
+    if (state.seismoWs) {
+        state.seismoWs.close();
+        state.seismoWs = null;
+    }
+}
+
+function startLiveDrawLoop() {
+    if (state.seismoRaf) cancelAnimationFrame(state.seismoRaf);
+    function tick() {
+        if (!state.seismoStation) return;
+        if (state.seismoScale === 'live') {
+            drawSeismograph();
+        }
+        state.seismoRaf = requestAnimationFrame(tick);
+    }
+    state.seismoRaf = requestAnimationFrame(tick);
+}
+
+async function fetchWaveform() {
+    if (!state.seismoStation) return;
+    try {
+        const resp = await fetch(`/api/seedlink/waveform/${state.seismoStation}?scale=${state.seismoScale}`);
+        const data = await resp.json();
+        state.seismoMode = data.mode || 'raw';
+        if (data.mode === 'envelope' && data.envelope) {
+            state.seismoEnvelope = data.envelope;
+            drawSeismograph();
+        } else if (data.samples && data.samples.length > 0) {
+            state.seismoBuffer = data.samples;
+            state.seismoSampleRate = data.sample_rate || 5;
+            drawSeismograph();
+        }
+    } catch (e) { /* retry next interval */ }
+}
+
+function setSeismoScale(scale) {
+    state.seismoScale = scale;
+    document.querySelectorAll('.seismo-scale-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.scale === scale);
+    });
+
+    if (scale === 'live') {
+        if (state.seismoInterval) { clearInterval(state.seismoInterval); state.seismoInterval = null; }
+        state.seismoMode = 'raw';
+        if (!state.seismoWs && state.seismoStation) connectSeismoWs(state.seismoStation);
+        startLiveDrawLoop();
+    } else {
+        if (state.seismoRaf) { cancelAnimationFrame(state.seismoRaf); state.seismoRaf = null; }
+        disconnectSeismoWs();
+        fetchWaveform();
+        if (state.seismoInterval) clearInterval(state.seismoInterval);
+        state.seismoInterval = setInterval(fetchWaveform, 10000);
+    }
+}
+
+function drawSeismograph() {
+    const canvas = document.getElementById('seismo-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (state.seismoMode === 'envelope') {
+        drawEnvelope(ctx, w, h, dpr);
+    } else {
+        drawWaveform(ctx, w, h, dpr);
+    }
+}
+
+const SEISMO_FIXED_RANGE = 15;
+
+function computeRMS(samples) {
+    if (!samples || samples.length === 0) return 1;
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    return Math.sqrt(sum / samples.length) || 1;
+}
+
+function drawYAxisSNR(ctx, w, h, dpr, maxSNR, pad, midY, padR) {
+    const right = padR != null ? padR : 10 * dpr;
+    const ticks = [5, 10, 15];
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${8 * dpr}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'right';
+    for (const val of ticks) {
+        if (val > maxSNR) break;
+        const frac = val / maxSNR;
+        const yUp = midY - (h * 0.42 * frac);
+        const yDn = midY + (h * 0.42 * frac);
+        ctx.fillText(`${val}×`, pad - 3 * dpr, yUp + 3 * dpr);
+        ctx.fillText(`-${val}×`, pad - 3 * dpr, yDn + 3 * dpr);
+        const lineAlpha = val === 5 ? 0.08 : 0.05;
+        ctx.strokeStyle = `rgba(255,255,255,${lineAlpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(pad, yUp); ctx.lineTo(ctx.canvas.width - right, yUp); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pad, yDn); ctx.lineTo(ctx.canvas.width - right, yDn); ctx.stroke();
+    }
+    ctx.fillText('0', pad - 3 * dpr, midY + 3 * dpr);
+    ctx.textAlign = 'left';
+}
+
+function drawWaveform(ctx, w, h, dpr) {
+    const samples = state.seismoBuffer;
+    if (!samples || samples.length < 2) return;
+
+    const midY = h / 2;
+    const pad = 40 * dpr;
+    const padR = 10 * dpr;
+    const drawW = w - pad - padR;
+    const sr = state.seismoSampleRate || 5;
+    const windowSec = state.seismoScale === 'live' ? 3600 : 1800;
+    const dataSec = samples.length / sr;
+    const dataFrac = Math.min(1, dataSec / windowSec);
+    const dataStartX = pad + drawW * (1 - dataFrac);
+    const maxSNR = SEISMO_FIXED_RANGE;
+
+    // Normalize to SNR (divide by RMS baseline)
+    const rms = computeRMS(samples);
+    const norm = samples.map(s => s / rms);
+
+    // Horizontal grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 6; i++) {
+        const y = (i / 6) * h;
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    }
+
+    // Time grid
+    const gridStep = state.seismoScale === 'live' ? 300 : 60;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `${9 * dpr}px "JetBrains Mono", monospace`;
+    for (let ago = gridStep; ago < windowSec; ago += gridStep) {
+        const x = pad + drawW * (1 - ago / windowSec);
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        const label = ago >= 60 ? `-${Math.round(ago / 60)}m` : `-${ago}s`;
+        ctx.fillText(label, x + 3 * dpr, h - 3 * dpr);
+    }
+
+    // Zero line
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(w - padR, midY); ctx.stroke();
+
+    const scale = (h * 0.42) / maxSNR;
+    drawYAxisSNR(ctx, w, h, dpr, maxSNR, pad, midY, padR);
+
+    // Waveform trace
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < norm.length; i++) {
+        const x = dataStartX + (i / norm.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - norm[i] * scale));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Highlight spikes > 5× baseline
+    let hasSpike = false;
+    for (let i = 0; i < norm.length; i++) { if (Math.abs(norm[i]) > 5) { hasSpike = true; break; } }
+    if (hasSpike) {
+        ctx.strokeStyle = 'rgba(220,100,80,0.3)';
+        ctx.lineWidth = 2 * dpr;
+        ctx.beginPath();
+        let drawing = false;
+        for (let i = 0; i < norm.length; i++) {
+            const x = dataStartX + (i / norm.length) * (drawW * dataFrac);
+            const y = Math.max(0, Math.min(h, midY - norm[i] * scale));
+            if (Math.abs(norm[i]) > 5) {
+                if (!drawing) { ctx.moveTo(x, y); drawing = true; } else ctx.lineTo(x, y);
+            } else { drawing = false; }
+        }
+        ctx.stroke();
+    }
+
+    // NOW label
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `${9 * dpr}px "JetBrains Mono", monospace`;
+    ctx.fillText('NOW', w - padR - 24 * dpr, h - 3 * dpr);
+}
+
+function drawEnvelope(ctx, w, h, dpr) {
+    const env = state.seismoEnvelope;
+    if (!env || env.length < 2) return;
+
+    const midY = h / 2;
+    const pad = 40 * dpr;
+    const padR = 10 * dpr;
+    const drawW = w - pad - padR;
+    const windowEntries = {
+        '6h': 720, '12h': 1440, '24h': 2880
+    }[state.seismoScale] || 720;
+    const windowSec = windowEntries * 30;
+    const dataSec = env.length * 30;
+    const dataFrac = Math.min(1, dataSec / windowSec);
+    const dataStartX = pad + drawW * (1 - dataFrac);
+    const maxSNR = SEISMO_FIXED_RANGE;
+
+    // Compute RMS baseline from envelope means
+    let sumSq = 0;
+    for (const e of env) { const avg = (Math.abs(e.mn) + Math.abs(e.mx)) / 2; sumSq += avg * avg; }
+    const rms = Math.sqrt(sumSq / env.length) || 1;
+
+    // Horizontal grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 6; i++) {
+        const y = (i / 6) * h;
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    }
+
+    // Time grid
+    const gridStep = state.seismoScale === '24h' ? 3600 : state.seismoScale === '12h' ? 1800 : 600;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `${9 * dpr}px "JetBrains Mono", monospace`;
+    for (let ago = gridStep; ago < windowSec; ago += gridStep) {
+        const x = pad + drawW * (1 - ago / windowSec);
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        const label = ago >= 3600 ? `-${Math.round(ago / 3600)}h` : `-${Math.round(ago / 60)}m`;
+        ctx.fillText(label, x + 3 * dpr, h - 3 * dpr);
+    }
+
+    // Zero line
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(w - padR, midY); ctx.stroke();
+
+    const scale = (h * 0.42) / maxSNR;
+    drawYAxisSNR(ctx, w, h, dpr, maxSNR, pad, midY, padR);
+
+    // Filled envelope — normalized
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    for (let i = 0; i < env.length; i++) {
+        const x = dataStartX + (i / env.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (env[i].mx / rms) * scale));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let i = env.length - 1; i >= 0; i--) {
+        const x = dataStartX + (i / env.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (env[i].mn / rms) * scale));
+        ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Max outline
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < env.length; i++) {
+        const x = dataStartX + (i / env.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (env[i].mx / rms) * scale));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Min outline
+    ctx.beginPath();
+    for (let i = 0; i < env.length; i++) {
+        const x = dataStartX + (i / env.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (env[i].mn / rms) * scale));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // NOW label
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `${9 * dpr}px "JetBrains Mono", monospace`;
+    ctx.fillText('NOW', w - padR - 24 * dpr, h - 3 * dpr);
+}
+
+// ── Embedded seismograph (workbench + forecast) ─────────
+function findNearestStations(lat, lon, count) {
+    if (!state.seedlinkStations || state.seedlinkStations.length === 0) return [];
+    const scored = state.seedlinkStations
+        .filter(s => s.lat != null && s.lon != null && s.connected)
+        .map(s => ({ ...s, dist: Math.sqrt((s.lat - lat) ** 2 + (s.lon - lon) ** 2) }))
+        .sort((a, b) => a.dist - b.dist);
+    return scored.slice(0, count);
+}
+
+function drawGenericWaveform(ctx, w, h, dpr, samples, sampleRate, scale) {
+    if (!samples || samples.length < 2) {
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = `${10 * dpr}px "JetBrains Mono", monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for data...', w / 2, h / 2);
+        ctx.textAlign = 'left';
+        return;
+    }
+    const midY = h / 2;
+    const pad = 36 * dpr, padR = 8 * dpr;
+    const drawW = w - pad - padR;
+    const sr = sampleRate || 5;
+    const windowSec = (scale === '1h' || scale === 'live') ? 3600 : 1800;
+    const dataSec = samples.length / sr;
+    const dataFrac = Math.min(1, dataSec / windowSec);
+    const dataStartX = pad + drawW * (1 - dataFrac);
+    const maxSNR = SEISMO_FIXED_RANGE;
+
+    const rms = computeRMS(samples);
+    const norm = samples.map(s => s / rms);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) { const y = (i / 4) * h; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - padR, y); ctx.stroke(); }
+
+    const gridStep = (scale === '1h' || scale === 'live') ? 300 : 60;
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `${8 * dpr}px "JetBrains Mono", monospace`;
+    for (let ago = gridStep; ago < windowSec; ago += gridStep) {
+        const x = pad + drawW * (1 - ago / windowSec);
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        const label = ago >= 60 ? `-${Math.round(ago / 60)}m` : `-${ago}s`;
+        ctx.fillText(label, x + 2 * dpr, h - 2 * dpr);
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(w - padR, midY); ctx.stroke();
+
+    const sc = (h * 0.42) / maxSNR;
+    drawYAxisSNR(ctx, w, h, dpr, maxSNR, pad, midY, padR);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < norm.length; i++) {
+        const x = dataStartX + (i / norm.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - norm[i] * sc));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `${8 * dpr}px "JetBrains Mono", monospace`;
+    ctx.fillText('NOW', w - padR - 22 * dpr, h - 2 * dpr);
+}
+
+function drawGenericEnvelope(ctx, w, h, dpr, envelope, scale) {
+    if (!envelope || envelope.length < 2) {
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = `${10 * dpr}px "JetBrains Mono", monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for data...', w / 2, h / 2);
+        ctx.textAlign = 'left';
+        return;
+    }
+    const midY = h / 2;
+    const pad = 36 * dpr, padR = 8 * dpr;
+    const drawW = w - pad - padR;
+    const windowEntries = { '6h': 720, '12h': 1440, '24h': 2880 }[scale] || 720;
+    const windowSec = windowEntries * 30;
+    const dataSec = envelope.length * 30;
+    const dataFrac = Math.min(1, dataSec / windowSec);
+    const dataStartX = pad + drawW * (1 - dataFrac);
+    const maxSNR = SEISMO_FIXED_RANGE;
+
+    let sumSq = 0;
+    for (const e of envelope) { const avg = (Math.abs(e.mn) + Math.abs(e.mx)) / 2; sumSq += avg * avg; }
+    const rms = Math.sqrt(sumSq / envelope.length) || 1;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) { const y = (i / 4) * h; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - padR, y); ctx.stroke(); }
+
+    const gridStep = scale === '24h' ? 3600 : scale === '12h' ? 1800 : 600;
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `${8 * dpr}px "JetBrains Mono", monospace`;
+    for (let ago = gridStep; ago < windowSec; ago += gridStep) {
+        const x = pad + drawW * (1 - ago / windowSec);
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        const label = ago >= 3600 ? `-${Math.round(ago / 3600)}h` : `-${Math.round(ago / 60)}m`;
+        ctx.fillText(label, x + 2 * dpr, h - 2 * dpr);
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(w - padR, midY); ctx.stroke();
+
+    const sc = (h * 0.42) / maxSNR;
+    drawYAxisSNR(ctx, w, h, dpr, maxSNR, pad, midY, padR);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    for (let i = 0; i < envelope.length; i++) {
+        const x = dataStartX + (i / envelope.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (envelope[i].mx / rms) * sc));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let i = envelope.length - 1; i >= 0; i--) {
+        const x = dataStartX + (i / envelope.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (envelope[i].mn / rms) * sc));
+        ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < envelope.length; i++) {
+        const x = dataStartX + (i / envelope.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (envelope[i].mx / rms) * sc));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < envelope.length; i++) {
+        const x = dataStartX + (i / envelope.length) * (drawW * dataFrac);
+        const y = Math.max(0, Math.min(h, midY - (envelope[i].mn / rms) * sc));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `${8 * dpr}px "JetBrains Mono", monospace`;
+    ctx.fillText('NOW', w - padR - 22 * dpr, h - 2 * dpr);
+}
+
+function startEmbeddedSeismo(containerId, stationKey, stationName, defaultScale) {
+    stopEmbeddedSeismo(containerId);
+    const scale = defaultScale || '6h';
+    const entry = { station: stationKey, name: stationName, scale: scale, buffer: [], envelope: [], sampleRate: 5, mode: 'raw', interval: null };
+    state.embeddedSeismos[containerId] = entry;
+
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="embedded-seismo-header">
+            <span class="embedded-seismo-station">${stationKey}</span>
+            <span class="embedded-seismo-name">${stationName}</span>
+            <div class="embedded-seismo-scales">
+                <button class="embedded-scale-btn${scale === '6h' ? ' active' : ''}" data-scale="6h" data-cid="${containerId}">6h</button>
+                <button class="embedded-scale-btn${scale === '12h' ? ' active' : ''}" data-scale="12h" data-cid="${containerId}">12h</button>
+                <button class="embedded-scale-btn${scale === '24h' ? ' active' : ''}" data-scale="24h" data-cid="${containerId}">24h</button>
+            </div>
+        </div>
+        <canvas class="embedded-seismo-canvas" id="${containerId}-canvas"></canvas>`;
+
+    container.querySelectorAll('.embedded-scale-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cid = btn.dataset.cid;
+            const e = state.embeddedSeismos[cid];
+            if (!e) return;
+            e.scale = btn.dataset.scale;
+            container.querySelectorAll('.embedded-scale-btn').forEach(b => b.classList.toggle('active', b.dataset.scale === e.scale));
+            fetchEmbeddedWaveform(cid);
+        });
+    });
+
+    fetchEmbeddedWaveform(containerId);
+    entry.interval = setInterval(() => fetchEmbeddedWaveform(containerId), 3000);
+}
+
+function stopEmbeddedSeismo(containerId) {
+    const entry = state.embeddedSeismos[containerId];
+    if (entry) {
+        if (entry.interval) clearInterval(entry.interval);
+        delete state.embeddedSeismos[containerId];
+    }
+}
+
+function stopAllEmbeddedSeismos() {
+    for (const cid of Object.keys(state.embeddedSeismos)) stopEmbeddedSeismo(cid);
+}
+
+async function fetchEmbeddedWaveform(containerId) {
+    const entry = state.embeddedSeismos[containerId];
+    if (!entry) return;
+    try {
+        const resp = await fetch(`/api/seedlink/waveform/${entry.station}?scale=${entry.scale}`);
+        const data = await resp.json();
+        entry.mode = data.mode || 'raw';
+        if (data.mode === 'envelope' && data.envelope) {
+            entry.envelope = data.envelope;
+        } else if (data.samples && data.samples.length > 0) {
+            entry.buffer = data.samples;
+            entry.sampleRate = data.sample_rate || 5;
+        }
+        drawEmbeddedSeismo(containerId);
+    } catch (e) { /* retry next interval */ }
+}
+
+function drawEmbeddedSeismo(containerId) {
+    const entry = state.embeddedSeismos[containerId];
+    if (!entry) return;
+    const canvas = document.getElementById(`${containerId}-canvas`);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (entry.mode === 'envelope') {
+        drawGenericEnvelope(ctx, canvas.width, canvas.height, dpr, entry.envelope, entry.scale);
+    } else {
+        drawGenericWaveform(ctx, canvas.width, canvas.height, dpr, entry.buffer, entry.sampleRate, entry.scale);
+    }
+}
+
+// ── Tidal sensitivity ripples ────────────────────────────
+function updateTidalRipples(data) {
+    if (!data || !data.zones) return;
+    state.tidalData = data;
+    const zones = data.zones;
+    const seen = new Set();
+
+    for (const z of zones) {
+        if (z.lat == null || z.lon == null) continue;
+        seen.add(z.id);
+
+        const threat = z.threat || 0;
+
+        if (threat < 0.05) {
+            if (state.tidalMarkers[z.id]) {
+                state.tidalMarkers[z.id].remove();
+                delete state.tidalMarkers[z.id];
+            }
+            continue;
+        }
+
+        let tierClass, rippleCount, rippleSize, duration;
+        if (threat > 0.25) {
+            tierClass = 'critical';
+            rippleCount = 3;
+            rippleSize = 70 + Math.min(40, (threat - 0.25) * 200);
+            duration = 2.0;
+        } else if (threat > 0.15) {
+            tierClass = 'elevated';
+            rippleCount = 2;
+            rippleSize = 40 + (threat - 0.15) * 300;
+            duration = 3.0;
+        } else {
+            tierClass = 'watch';
+            rippleCount = 1;
+            rippleSize = 25;
+            duration = 4.5;
+        }
+
+        let ripples = '';
+        const style = `--ripple-size:${rippleSize.toFixed(0)}px;--ripple-duration:${duration}s`;
+        ripples += `<div class="tidal-ripple ${tierClass}" style="${style}"></div>`;
+        if (rippleCount >= 2) ripples += `<div class="tidal-ripple r2 ${tierClass}" style="${style}"></div>`;
+        if (rippleCount >= 3) ripples += `<div class="tidal-ripple r3 ${tierClass}" style="${style}"></div>`;
+
+        const html = `<div class="tidal-ripple-container">
+            <div class="tidal-center-dot ${tierClass}"></div>
+            ${ripples}
+        </div>`;
+
+        const stressPct = ((z.tidal_stress || 0) * 100).toFixed(0);
+        const tierLabel = threat > 0.25 ? '<span class="tidal-crit">TIDAL THREAT — ACTIVE</span>'
+            : threat > 0.15 ? '<span class="tidal-sig">TIDAL LOADING</span>'
+            : '<span class="tidal-watch">TIDAL WATCH</span>';
+        const tipHtml = `<b>${z.name}</b><br>` +
+            `${tierLabel}<br>` +
+            `Tidal forcing: ${stressPct}%<br>` +
+            `Sensitivity R=${z.R.toFixed(4)}<br>` +
+            `${z.n_quakes} quakes in 30d`;
+
+        if (state.tidalMarkers[z.id]) {
+            state.tidalMarkers[z.id].getElement().innerHTML = html;
+            state.tidalMarkers[z.id]._tipHtml = tipHtml;
+        } else {
+            const el = document.createElement('div');
+            el.innerHTML = html;
+            el.style.cursor = 'pointer';
+            const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat([z.lon, z.lat])
+                .addTo(map);
+            setTooltip(m, tipHtml);
+            state.tidalMarkers[z.id] = m;
+        }
+    }
+
+    for (const id of Object.keys(state.tidalMarkers)) {
+        if (!seen.has(id)) {
+            state.tidalMarkers[id].remove();
+            delete state.tidalMarkers[id];
+        }
+    }
+}
+
+
+// ── DART buoy markers ───────────────────────────────────
+function updateDartMarkers(data) {
+    const stations = data.stations || [];
+    const seen = new Set();
+
+    for (const stn of stations) {
+        if (stn.lat == null || stn.lon == null) continue;
+        const key = stn.station_id;
+        seen.add(key);
+
+        const isEvent = stn.mode === 'event';
+        const isTsunami = stn.mode === 'tsunami';
+        const isElevated = !isEvent && !isTsunami && (stn.deviation || 0) >= 1.5;
+        const modeClass = isTsunami ? 'dart-tsunami' : isEvent ? 'dart-event'
+                        : isElevated ? 'dart-elevated' : 'dart-normal';
+
+        const html = `<div class="dart-marker ${modeClass}"></div>`;
+
+        const modeLabel = isTsunami ? '<span class="dart-alert">TSUNAMI MODE (1-min)</span>'
+                        : isEvent ? '<span class="dart-alert">EVENT MODE (1-min)</span>'
+                        : isElevated ? '<span class="dart-alert">ELEVATED SIGNAL</span>'
+                        : 'Normal (15-min)';
+        const devStr = stn.deviation != null ? `<br>Deviation: ${stn.deviation.toFixed(1)}σ` : '';
+        const heightStr = stn.height_m != null ? `<br>Depth: ${stn.height_m.toFixed(1)}m` : '';
+        const tipHtml = `<b>DART ${key}</b><br>${stn.region}<br>${modeLabel}${heightStr}${devStr}<br>Last: ${stn.last_reading} UTC`;
+
+        if (state.dartMarkers[key]) {
+            state.dartMarkers[key].getElement().innerHTML = html;
+            state.dartMarkers[key]._tipHtml = tipHtml;
+        } else {
+            const el = document.createElement('div');
+            el.innerHTML = html;
+            el.style.cursor = 'pointer';
+            const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat([stn.lon, stn.lat])
+                .addTo(map);
+            setTooltip(m, tipHtml);
+            state.dartMarkers[key] = m;
+        }
+    }
+}
+
+// ── Earthquake feed ──────────────────────────────────────
+function updateEqFeed(quakes) {
+    const el = document.getElementById('eq-feed');
+    const cutoff = new Date(Date.now() - state.filterHours * 3600000).toISOString();
+    const filtered = quakes
+        .filter(eq => eq.magnitude >= state.filterMag && eq.timestamp >= cutoff)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const countEl = document.getElementById('eq-count');
+    if (countEl) countEl.textContent = filtered.length + ' events';
+    el.innerHTML = filtered.slice(0, 50).map(eq => {
+        const color = magColor(eq.magnitude);
+        const place = (eq.place || 'Unknown').replace(/^.+? of /, '');
+        const depth = eq.depth_km ? `${eq.depth_km.toFixed(0)}km` : '';
+        return `<div class="eq-feed-item" data-lat="${eq.lat}" data-lon="${eq.lon}" data-id="${eq.id}">
+            <div class="eq-feed-mag" style="color:${color}">M${eq.magnitude.toFixed(1)}</div>
+            <div class="eq-feed-info">
+                <div class="eq-feed-place">${place}</div>
+                <div class="eq-feed-meta">${depth ? depth + ' &middot; ' : ''}${timeAgo(eq.timestamp)}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    el.querySelectorAll('.eq-feed-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const lat = parseFloat(item.dataset.lat);
+            const lon = parseFloat(item.dataset.lon);
+            map.flyTo({ center: [lon, lat], zoom: 7, speed: 1.5 });
+            const eq = quakes.find(q => q.id === item.dataset.id);
+            if (eq) showEqDetail(eq);
+        });
+    });
+}
+
+// ── Earthquake detail ────────────────────────────────────
+function showEqDetail(eq) {
+    const el = document.getElementById('eq-detail');
+    const content = document.getElementById('detail-content');
+    const color = magColor(eq.magnitude);
+    const place = (eq.place || 'Unknown location').replace(/'/g, '');
+    content.innerHTML = `
+        <div class="detail-mag" style="color:${color}">M${eq.magnitude.toFixed(1)}</div>
+        <div class="detail-place">${eq.place || 'Unknown location'}</div>
+        <div class="detail-grid">
+            <div><div class="detail-label">Depth</div><div class="detail-value">${eq.depth_km ? eq.depth_km.toFixed(1) + ' km' : '--'}</div></div>
+            <div><div class="detail-label">Time</div><div class="detail-value">${timeAgo(eq.timestamp)}</div></div>
+            <div><div class="detail-label">Coords</div><div class="detail-value">${eq.lat.toFixed(2)}, ${eq.lon.toFixed(2)}</div></div>
+            <div><div class="detail-label">UTC</div><div class="detail-value">${new Date(eq.timestamp).toISOString().slice(11,16)}</div></div>
+        </div>
+        <button class="detail-predict-btn" data-lat="${eq.lat}" data-lon="${eq.lon}" data-name="${place}">Run prediction</button>
+        ${eq.magnitude >= 4.5 ? `<button class="detail-ai-btn" data-id="${eq.id}" data-mag="${eq.magnitude}" data-place="${place}">AI Analysis</button>` : ''}
+    `;
+    el.classList.add('visible');
+}
+
+function hideEqDetail() {
+    document.getElementById('eq-detail').classList.remove('visible');
+}
+
+// ── Signal cards (now feeds conditions panel) ───────────
+function updateSignalCards(signals) {
+    updateConditions(signals);
+}
+
+// ── Risk arc SVG ─────────────────────────────────────────
+function riskArcSvg(score, color, size) {
+    const r = (size - 6) / 2;
+    const cx = size / 2, cy = size / 2;
+    const circumference = Math.PI * r;
+    const filled = circumference * score;
+    const pct = (score * 100).toFixed(0);
+    return `<svg class="risk-arc-svg" width="${size}" height="${size / 2 + 4}" viewBox="0 0 ${size} ${size / 2 + 4}">
+        <path d="M 3 ${cy} A ${r} ${r} 0 0 1 ${size - 3} ${cy}"
+              fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="3" stroke-linecap="round"/>
+        <path d="M 3 ${cy} A ${r} ${r} 0 0 1 ${size - 3} ${cy}"
+              fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round"
+              stroke-dasharray="${filled} ${circumference}"
+              style="filter:drop-shadow(0 0 3px ${color})"/>
+        <text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="${color}"
+              font-size="${Math.round(size * 0.22)}" font-weight="600" font-family="Inter,sans-serif">${pct}%</text>
+    </svg>`;
+}
+
+// ── Geo trend helper ─────────────────────────────────────
+function geoTrend(key) {
+    const hist = state.signalHistory[key];
+    if (!hist || hist.length < 4) return { arrow: '', cls: 'trend-flat' };
+    const recent = hist.slice(-3).reduce((s, d) => s + (typeof d === 'number' ? d : d.v), 0) / 3;
+    const older = hist.slice(-8, -3);
+    if (older.length === 0) return { arrow: '', cls: 'trend-flat' };
+    const prev = older.reduce((s, d) => s + (typeof d === 'number' ? d : d.v), 0) / older.length;
+    const delta = recent - prev;
+    const pctChange = prev !== 0 ? Math.abs(delta / prev) : 0;
+    if (pctChange < 0.05) return { arrow: '—', cls: 'trend-flat' };
+    return delta > 0 ? { arrow: '▲', cls: 'trend-up' } : { arrow: '▼', cls: 'trend-down' };
+}
+
+function geoStatusLabel(key, value) {
+    if (key.includes('kp')) {
+        if (value >= 7) return { text: 'Severe storm', cls: 'geo-storm' };
+        if (value >= 5) return { text: 'Storm', cls: 'geo-storm' };
+        if (value >= 4) return { text: 'Active', cls: 'geo-active' };
+        return { text: 'Quiet', cls: 'geo-quiet' };
+    }
+    if (key.includes('dst')) {
+        if (value < -100) return { text: 'Intense storm', cls: 'geo-storm' };
+        if (value < -50) return { text: 'Moderate storm', cls: 'geo-storm' };
+        if (value < -30) return { text: 'Weak disturbance', cls: 'geo-active' };
+        return { text: 'Quiet', cls: 'geo-quiet' };
+    }
+    return { text: '', cls: 'geo-quiet' };
+}
+
+function geoBarPct(key, value) {
+    if (key.includes('kp')) return Math.min(100, (value / 9) * 100);
+    if (key.includes('dst')) return Math.min(100, (Math.abs(value) / 150) * 100);
+    return 30;
+}
+
+// ── Footer prediction (actionable) ───────────────────────
+async function predictLocation(lat, lon, name) {
+    const zoneName = name || guessRegionName(lat, lon);
+    try {
+        const resp = await fetch('/api/threats');
+        if (resp.ok) {
+            const allThreats = await resp.json();
+            const zoneData = allThreats.find(z => z.name === zoneName) || allThreats.find(z => {
+                const d = Math.abs(z.center[0] - lat) + Math.abs(z.center[1] - lon);
+                return d < 15;
+            }) || null;
+            openWorkbench(zoneName, zoneData);
+        } else {
+            openWorkbench(zoneName, null);
+        }
+    } catch (e) {
+        openWorkbench(zoneName, null);
+    }
+}
+
+// ── Predictive fault risk (from API) ─────────────────────
+async function refreshFaultRisk() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/predict/faults');
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const heatFeatures = [];
+        const lineFeatures = [];
+
+        for (const seg of data.segments) {
+            const a = seg.a, b = seg.b;
+            const risk = seg.risk;
+
+            const steps = 6;
+            for (let s = 0; s <= steps; s++) {
+                const t = s / steps;
+                const lat = a[0] + (b[0] - a[0]) * t;
+                const lon = a[1] + (b[1] - a[1]) * t;
+                if (risk > 0.2) {
+                    heatFeatures.push({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [lon, lat] },
+                        properties: { weight: Math.pow(risk, 2) }
+                    });
+                }
+            }
+
+            if (risk > 0.25) {
+                const t = Math.min(1, (risk - 0.25) / 0.55);
+                const r = Math.round(200 + t * 55);
+                const g = Math.round(160 * (1 - t));
+                const bv = Math.round(40 * (1 - t));
+                const opacity = 0.2 + t * 0.6;
+                const weight = 1 + t * 2.5;
+
+                lineFeatures.push({
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: [[a[1], a[0]], [b[1], b[0]]] },
+                    properties: {
+                        color: `rgb(${r},${g},${bv})`,
+                        width: weight,
+                        opacity: opacity,
+                        glowWidth: weight + 4 + t * 6,
+                        glowOpacity: opacity * 0.3,
+                    }
+                });
+            }
+        }
+
+        const fhSrc = map.getSource('fault-heat');
+        if (fhSrc) fhSrc.setData({ type: 'FeatureCollection', features: heatFeatures });
+        const flSrc = map.getSource('fault-lines');
+        if (flSrc) flSrc.setData({ type: 'FeatureCollection', features: lineFeatures });
+    } catch (e) {
+        console.error('Fault risk error:', e);
+    }
+}
+
+// ── Heatmap (seismicity-based) ───────────────────────────
+async function refreshHeatmap() {
+    if (!mapReady) return;
+    try {
+        const thirtyDays = new Date(Date.now() - 30 * 86400000).toISOString();
+        const resp = await fetch(`/api/earthquakes?start=${thirtyDays}&min_mag=2.5&limit=500`);
+        if (!resp.ok) return;
+        const quakes = await resp.json();
+        if (!Array.isArray(quakes) || quakes.length === 0) return;
+        const features = quakes
+            .filter(q => q.lat != null && q.lon != null)
+            .map(q => {
+                const age = (Date.now() - new Date(q.timestamp).getTime()) / (30 * 86400000);
+                const recency = Math.max(0, 1 - age);
+                const magWeight = Math.pow((q.magnitude - 2) / 6, 1.5);
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [q.lon, q.lat] },
+                    properties: { weight: Math.min(1, magWeight * (0.3 + 0.7 * recency)) }
+                };
+            });
+        const src = map.getSource('eq-heat');
+        if (src) src.setData({ type: 'FeatureCollection', features });
+    } catch (e) {
+        console.error('Heatmap error:', e);
+    }
+}
+
+// ── Forecast Detail Overlay ──────────────────────────────
+const FC_CAT_COLORS = {
+    seismic: 'rgba(100,180,255,0.85)', geomag: 'rgba(180,120,255,0.85)',
+    solar: 'rgba(255,180,60,0.85)', tidal: 'rgba(60,200,180,0.85)',
+    tidal_s: 'rgba(60,200,180,0.85)', cosmic: 'rgba(200,200,220,0.7)',
+    thermal: 'rgba(255,120,80,0.85)', ief: 'rgba(220,180,100,0.8)',
+    ground_mag: 'rgba(140,180,220,0.8)', iono: 'rgba(160,220,160,0.8)',
+    physics: 'rgba(100,220,255,0.85)', coupling: 'rgba(255,200,100,0.85)',
+    traj: 'rgba(180,160,220,0.8)', interact: 'rgba(220,160,180,0.8)',
+    volcanic: 'rgba(220,100,60,0.85)', flare: 'rgba(255,160,60,0.85)',
+    cme: 'rgba(255,140,100,0.85)', donki_int: 'rgba(240,180,120,0.8)',
+    other: 'rgba(180,180,180,0.6)',
+};
+
+const _fcCache = {};
+const _fcCacheTime = {};
+const _FC_CACHE_TTL = 120000;
+
+function openForecastDetail(zoneId) {
+    const overlay = document.getElementById('fc-overlay');
+    const content = document.getElementById('fc-content');
+    overlay.classList.add('open');
+
+    const now = Date.now();
+    if (_fcCache[zoneId] && (now - _fcCacheTime[zoneId]) < _FC_CACHE_TTL) {
+        renderForecastDetail(_fcCache[zoneId]);
+        return;
+    }
+
+    content.innerHTML = '<div class="fc-loading">Loading forecast analysis...</div>';
+
+    fetch(`/api/forecast/${encodeURIComponent(zoneId)}/explain`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                content.innerHTML = `<div class="fc-loading">${data.error}</div>`;
+                return;
+            }
+            _fcCache[zoneId] = data;
+            _fcCacheTime[zoneId] = Date.now();
+            renderForecastDetail(data);
+        })
+        .catch(() => {
+            content.innerHTML = '<div class="fc-loading">Failed to load forecast data</div>';
+        });
+}
+
+function closeForecastDetail() {
+    stopAllEmbeddedSeismos();
+    document.getElementById('fc-overlay').classList.remove('open');
+}
+
+document.getElementById('fc-close')?.addEventListener('click', closeForecastDetail);
+document.getElementById('fc-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'fc-overlay') closeForecastDetail();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('fc-overlay')?.classList.contains('open')) {
+        closeForecastDetail();
+    }
+});
+
+function renderForecastDetail(d) {
+    const content = document.getElementById('fc-content');
+    const pct = (d.probability * 100).toFixed(0);
+    const tier = d.probability >= 0.75 ? 'high' : d.probability >= 0.55 ? 'likely' : 'possible';
+    const tierLabel = tier === 'high' ? 'HIGH CONFIDENCE' : tier === 'likely' ? 'LIKELY' : 'POSSIBLE';
+    const gaugeColor = 'rgba(255,255,255,0.7)';
+
+    const circumference = 2 * Math.PI * 52;
+    const offset = circumference * (1 - d.probability);
+
+    const expires = new Date(d.expires_at);
+    const now = new Date();
+    const hoursLeft = Math.max(0, (expires - now) / 3600000);
+    const windowStr = `${d.window_hours}h window — ${hoursLeft.toFixed(0)}h remaining`;
+
+    const windowPills = Object.entries(d.windows || {})
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map(([wh, p]) => {
+            const active = Number(wh) === d.window_hours ? ' active' : '';
+            return `<span class="fc-window-pill${active}">${wh}h: ${(p * 100).toFixed(0)}%</span>`;
+        }).join('');
+
+    // Evidence bars
+    const evidence = d.evidence || [];
+    let evidenceHtml = '';
+    for (const ev of evidence) {
+        const valStr = ev.value != null ? ev.value.toFixed(2) : '—';
+        evidenceHtml += `<div class="fc-evidence-row">
+            <div class="fc-ev-label">${ev.label}</div>
+            <div class="fc-ev-bar-track"><div class="fc-ev-bar-fill" style="width:${ev.contribution_pct}%"></div></div>
+            <div class="fc-ev-value">${valStr}</div>
+        </div>`;
+    }
+
+    // Threat signals
+    const threat = d.threat || {};
+    const signals = threat.signals || [];
+    let signalsHtml = '';
+    for (const s of signals) {
+        const sev = s.severity || 0;
+        const dotOpacity = 0.25 + sev * 0.6;
+        signalsHtml += `<div class="fc-signal-row">
+            <div class="fc-signal-dot" style="background:rgba(255,255,255,${dotOpacity.toFixed(2)})"></div>
+            <div class="fc-signal-text">${s.signal}${s.detail ? `<br><span style="color:rgba(255,255,255,0.45);font-size:10px">${s.detail}</span>` : ''}</div>
+            <div class="fc-signal-severity">${(sev * 100).toFixed(0)}%</div>
+        </div>`;
+    }
+    if (signals.length === 0) signalsHtml = '<div style="font-size:11px;color:rgba(255,255,255,0.3)">No active threat signals</div>';
+
+    // Score breakdown
+    let scoresHtml = '';
+    if (threat.score != null) {
+        const items = [
+            ['Foreshock', threat.foreshock_score],
+            ['b-Value', threat.b_score],
+            ['Acceleration', threat.accel_score],
+            ['Sig. Event', threat.sig_event_score],
+        ];
+        for (const [name, val] of items) {
+            scoresHtml += `<div class="fc-score-item">
+                <span class="fc-score-name">${name}</span>
+                <span class="fc-score-val">${val != null ? val.toFixed(3) : '—'}</span>
+            </div>`;
+        }
+    }
+
+    // Boosts
+    let boostsHtml = '';
+    if (threat.score != null) {
+        const boosts = [
+            ['Tidal', threat.tidal_boost],
+            ['Geomag', threat.geomag_boost],
+            ['DART', threat.dart_boost],
+            ['Volcanic', threat.volcanic_boost],
+            ['ML', threat.ml_boost],
+        ];
+        for (const [name, val] of boosts) {
+            const active = val && val > 0 ? ' active' : '';
+            const label = val && val > 0 ? `${name} +${val.toFixed(3)}` : `${name} —`;
+            boostsHtml += `<span class="fc-boost-pill${active}">${label}</span>`;
+        }
+    }
+
+    // Recent seismicity
+    let quakesHtml = '';
+    const quakes = d.recent_seismicity || [];
+    if (quakes.length > 0) {
+        for (const q of quakes.slice(0, 8)) {
+            const t = new Date(q.time);
+            const ago = ((now - t) / 3600000).toFixed(0);
+            quakesHtml += `<div class="fc-quake-row">
+                <span class="fc-quake-mag">M${q.mag.toFixed(1)}</span>
+                <span class="fc-quake-place">${q.place || '—'}</span>
+                <span class="fc-quake-time">${ago}h ago</span>
+            </div>`;
+        }
+    } else {
+        quakesHtml = '<div style="font-size:11px;color:rgba(255,255,255,0.3)">No recent events in zone</div>';
+    }
+
+    // Track record
+    const track = d.zone_track_record || {};
+    const hitRate = track.hit_rate != null ? (track.hit_rate * 100).toFixed(0) + '%' : '—';
+    let historyHtml = '';
+    for (const h of (track.recent || []).slice(0, 8)) {
+        const cls = h.outcome === 'hit' ? 'hit' : h.outcome === 'pending' ? 'pending' : 'miss';
+        const pctH = (h.probability * 100).toFixed(0);
+        const dateStr = h.issued_at ? new Date(h.issued_at).toLocaleDateString('en', {month:'short', day:'numeric'}) : '';
+        const outcomeLabel = h.outcome === 'hit' ? `HIT M${h.actual_mag?.toFixed(1) || '?'} — ${h.lead_time_hours?.toFixed(0) || '?'}h lead`
+            : h.outcome === 'pending' ? 'PENDING'
+            : 'NO EVENT';
+        historyHtml += `<div class="fc-history-row">
+            <span class="fc-history-dot ${cls}"></span>
+            <span>${dateStr}</span>
+            <span style="font-family:'JetBrains Mono',monospace">${pctH}%</span>
+            <span style="flex:1;text-align:right">${outcomeLabel}</span>
+        </div>`;
+    }
+
+    content.innerHTML = `
+        <div class="fc-hero">
+            <div class="fc-gauge">
+                <svg viewBox="0 0 120 120">
+                    <circle class="fc-gauge-track" cx="60" cy="60" r="52"/>
+                    <circle class="fc-gauge-fill" cx="60" cy="60" r="52"
+                        stroke="${gaugeColor}"
+                        stroke-dasharray="${circumference}"
+                        stroke-dashoffset="${offset}"/>
+                </svg>
+                <div class="fc-gauge-pct">
+                    ${pct}
+                </div>
+            </div>
+            <div class="fc-hero-info">
+                <div class="fc-hero-zone">${d.zone_name}</div>
+                <div class="fc-hero-mag">M${d.magnitude_est} <span class="fc-hero-mag-range">range ${d.magnitude_lo} – ${d.magnitude_hi}</span></div>
+                <div class="fc-hero-window">${windowStr}</div>
+                <span class="fc-hero-tier fc-tier-${tier}">${tierLabel}</span>
+                <div class="fc-hero-windows">${windowPills}</div>
+            </div>
+        </div>
+
+        ${(d.trend && d.trend.length >= 2) ? `
+        <div class="fc-section">
+            <div class="fc-section-title">Probability Trend</div>
+            <div class="fc-trend-wrap">
+                <canvas id="fc-trend-canvas" class="fc-trend-canvas"></canvas>
+                <div class="fc-trend-labels">
+                    <span class="fc-trend-label-left" id="fc-trend-t0"></span>
+                    <span class="fc-trend-label-right" id="fc-trend-t1"></span>
+                </div>
+            </div>
+        </div>` : ''}
+
+        <div class="fc-grid">
+            <div class="fc-main">
+                <div class="fc-section">
+                    <div class="fc-section-title">Evidence — What's Driving This Prediction</div>
+                    <div class="fc-evidence-list">${evidenceHtml}</div>
+                </div>
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Active Signals</div>
+                    <div class="fc-signal-list">${signalsHtml}</div>
+                </div>
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Recent Seismicity (72h)</div>
+                    <div class="fc-quake-list">${quakesHtml}</div>
+                </div>
+            </div>
+
+            <div class="fc-side">
+                ${scoresHtml ? `<div class="fc-section">
+                    <div class="fc-section-title">Threat Components</div>
+                    <div class="fc-scores">${scoresHtml}</div>
+                    <div class="fc-boosts">${boostsHtml}</div>
+                </div>` : ''}
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Zone Track Record</div>
+                    <div class="fc-track">
+                        <div class="fc-track-stat">
+                            <div class="fc-track-num">${hitRate}</div>
+                            <div class="fc-track-label">Hit Rate</div>
+                        </div>
+                        <div class="fc-track-stat">
+                            <div class="fc-track-num">${track.total || 0}</div>
+                            <div class="fc-track-label">Resolved</div>
+                        </div>
+                        <div class="fc-track-stat">
+                            <div class="fc-track-num">${track.hits || 0}</div>
+                            <div class="fc-track-label">Hits</div>
+                        </div>
+                    </div>
+                    ${historyHtml ? `<div class="fc-section-title" style="margin-top:4px">History</div>
+                    <div class="fc-history-list">${historyHtml}</div>` : ''}
+                </div>
+            </div>
+        </div>
+
+        <div class="fc-seismo-section" id="fc-seismo-section"></div>
+    `;
+
+    stopAllEmbeddedSeismos();
+    requestAnimationFrame(() => {
+        const fill = content.querySelector('.fc-gauge-fill');
+        if (fill) fill.style.strokeDashoffset = offset;
+        if (d.trend && d.trend.length >= 2) drawForecastTrend(d.trend);
+
+        const fcLat = d.center?.[0];
+        const fcLon = d.center?.[1];
+        if (fcLat != null && fcLon != null) {
+            const nearest = findNearestStations(fcLat, fcLon, 2);
+            const section = document.getElementById('fc-seismo-section');
+            if (nearest.length > 0 && section) {
+                let html = '<div class="fc-section-title">Nearest Stations — Live Seismograph</div>';
+                for (let i = 0; i < nearest.length; i++) {
+                    html += `<div class="embedded-seismo-wrap" id="fc-seismo-${i}"></div>`;
+                }
+                section.innerHTML = html;
+                for (let i = 0; i < nearest.length; i++) {
+                    startEmbeddedSeismo(`fc-seismo-${i}`, nearest[i].station, nearest[i].name, '6h');
+                }
+            }
+        }
+    });
+}
+
+function drawForecastTrend(trend) {
+    const canvas = document.getElementById('fc-trend-canvas');
+    if (!canvas || !trend || trend.length < 2) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = rect.width, h = rect.height;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const pad = { top: 16, right: 12, bottom: 4, left: 32 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+
+    const probs = trend.map(t => t.p);
+    const yMax = Math.max(1, Math.ceil(Math.max(...probs) * 100 / 10) * 10) / 100;
+    const yMin = 0;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    const gridSteps = [0.25, 0.5, 0.75];
+    for (const step of gridSteps) {
+        if (step > yMax) continue;
+        const gy = pad.top + ch * (1 - (step - yMin) / (yMax - yMin));
+        ctx.beginPath();
+        ctx.moveTo(pad.left, gy);
+        ctx.lineTo(pad.left + cw, gy);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '9px JetBrains Mono';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${(step * 100).toFixed(0)}%`, pad.left - 6, gy + 3);
+    }
+
+    // Threshold line at 35%
+    const threshY = pad.top + ch * (1 - (0.35 - yMin) / (yMax - yMin));
+    if (threshY > pad.top && threshY < pad.top + ch) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, threshY);
+        ctx.lineTo(pad.left + cw, threshY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Line
+    ctx.beginPath();
+    for (let i = 0; i < trend.length; i++) {
+        const x = pad.left + (i / (trend.length - 1)) * cw;
+        const y = pad.top + ch * (1 - (trend[i].p - yMin) / (yMax - yMin));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Fill under
+    const lastX = pad.left + cw;
+    const lastY = pad.top + ch * (1 - (trend[trend.length - 1].p - yMin) / (yMax - yMin));
+    ctx.lineTo(lastX, pad.top + ch);
+    ctx.lineTo(pad.left, pad.top + ch);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+    grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Current value dot
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fill();
+
+    // Time labels
+    const t0 = document.getElementById('fc-trend-t0');
+    const t1 = document.getElementById('fc-trend-t1');
+    if (t0) t0.textContent = new Date(trend[0].t).toLocaleDateString('en', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    if (t1) t1.textContent = new Date(trend[trend.length - 1].t).toLocaleDateString('en', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+
+// ── SSE Stream ───────────────────────────────────────────
+function connectStream() {
+    const es = new EventSource(CONFIG.STREAM_URL);
+
+    es.addEventListener('earthquakes', (e) => {
+        try {
+            const quakes = JSON.parse(e.data);
+            checkNewQuakes(quakes);
+            state.earthquakes = quakes;
+            updateEarthquakeMarkers(quakes);
+            updateEqFeed(quakes);
+            if (!state._heatmapLoaded) {
+                state._heatmapLoaded = true;
+                refreshHeatmap();
+            }
+        } catch (err) { console.error('EQ parse:', err); }
+    });
+
+    es.addEventListener('threats', (e) => {
+        try {
+            const threats = JSON.parse(e.data);
+            updateThreatMonitor(threats);
+        } catch (err) { console.error('Threat parse:', err); }
+    });
+
+    es.addEventListener('signals', (e) => {
+        try {
+            const signals = JSON.parse(e.data);
+            state.signals = signals;
+            for (const [key, sig] of Object.entries(signals)) {
+                if (!state.signalHistory[key]) state.signalHistory[key] = [];
+                const hist = state.signalHistory[key];
+                const last = hist.length > 0 ? hist[hist.length - 1] : null;
+                if (!last || last.t !== sig.timestamp) {
+                    hist.push({ t: sig.timestamp, v: sig.value });
+                    if (hist.length > 200)
+                        state.signalHistory[key] = hist.slice(-150);
+                }
+            }
+            updateSignalCards(signals);
+        } catch (err) { console.error('Signal parse:', err); }
+    });
+
+    es.addEventListener('dart', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            updateDartMarkers(data);
+            updateDartSummary(data);
+        } catch (err) { console.error('DART parse:', err); }
+    });
+
+    es.addEventListener('volcanic', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            updateVolcanicSummary(data);
+            try { updateVolcanoMarkers(data); } catch (merr) { console.error('Volcano markers:', merr); }
+        } catch (err) { console.error('Volcanic parse:', err); }
+    });
+
+    es.addEventListener('tidal', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            updateTidalRipples(data);
+        } catch (err) { console.error('Tidal parse:', err); }
+    });
+
+    es.addEventListener('seedlink', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            updateStationMarkers(data.stations || []);
+            if (data.detections && data.detections.length) {
+                const now = Date.now();
+                for (const det of data.detections) {
+                    const key = det.source + det.timestamp;
+                    if (det.estimated_magnitude >= 5.0
+                        && !state.seenQuakeIds.has(key)
+                        && now - state.lastSeedlinkAlert > 300000) {
+                        state.seenQuakeIds.add(key);
+                        state.lastSeedlinkAlert = now;
+                        playQuakeAlert(det.estimated_magnitude);
+                    } else {
+                        state.seenQuakeIds.add(key);
+                    }
+                }
+            }
+        } catch (err) { console.error('SeedLink parse:', err); }
+    });
+
+    es.addEventListener('forecast', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            updateForecastPanel(data);
+        } catch (err) { console.error('Forecast parse:', err); }
+    });
+
+    es.onopen = () => {
+        state.streamConnected = true;
+        const dot = document.querySelector('.brand-dot');
+        const label = document.getElementById('signal-status');
+        dot.classList.add('live');
+        label.textContent = 'live';
+        label.style.color = 'rgba(80,200,120,0.6)';
+    };
+
+    es.onerror = () => {
+        state.streamConnected = false;
+        const dot = document.querySelector('.brand-dot');
+        const label = document.getElementById('signal-status');
+        dot.classList.remove('live');
+        label.textContent = 'reconnecting';
+        label.style.color = 'rgba(255,255,255,0.2)';
+        es.close();
+        setTimeout(connectStream, CONFIG.RECONNECT_DELAY);
+    };
+}
+
+// ── Clock ────────────────────────────────────────────────
+function updateClock() {
+    const now = new Date();
+    const h = String(now.getUTCHours()).padStart(2, '0');
+    const m = String(now.getUTCMinutes()).padStart(2, '0');
+    const s = String(now.getUTCSeconds()).padStart(2, '0');
+    document.getElementById('hud-time').textContent = `${h}:${m}:${s}`;
+}
+
+// ── Map click ────────────────────────────────────────────
+function setupMapClick() {
+    map.on('click', () => {
+        const detail = document.getElementById('eq-detail');
+        if (detail.classList.contains('visible')) {
+            hideEqDetail();
+        }
+    });
+}
+
+// ── Event delegation ─────────────────────────────────────
+function setupDelegation() {
+    document.getElementById('detail-close').addEventListener('click', hideEqDetail);
+    document.getElementById('eq-detail').addEventListener('click', (e) => {
+        const btn = e.target.closest('.detail-predict-btn');
+        if (btn) {
+            hideEqDetail();
+            predictLocation(parseFloat(btn.dataset.lat), parseFloat(btn.dataset.lon), btn.dataset.name || '');
+            return;
+        }
+        const aiBtn = e.target.closest('.detail-ai-btn');
+        if (aiBtn) {
+            openAiAnalysis(aiBtn.dataset.id, aiBtn.dataset.mag, aiBtn.dataset.place);
+        }
+    });
+
+    document.getElementById('analysis-close').addEventListener('click', closeAnalysis);
+
+    // Seismograph
+    const seismoClose = document.getElementById('seismo-close');
+    if (seismoClose) seismoClose.addEventListener('click', closeSeismograph);
+    document.querySelectorAll('.seismo-scale-btn').forEach(btn => {
+        btn.addEventListener('click', () => setSeismoScale(btn.dataset.scale));
+    });
+    document.querySelectorAll('.seismo-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => setSeismoDisplayMode(btn.dataset.mode));
+    });
+
+    // Workbench close
+    document.getElementById('wb-close').addEventListener('click', closeWorkbench);
+
+    // Workbench time filter buttons
+    document.querySelectorAll('.wb-time-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.wb-time-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            workbenchState.timeHours = parseInt(btn.dataset.hours);
+            saveWbPrefs();
+            refreshAllWorkbenchCharts();
+        });
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (state.seismoStation) { closeSeismograph(); e.stopPropagation(); return; }
+            const wb = document.getElementById('wb-overlay');
+            if (wb.classList.contains('visible')) {
+                closeWorkbench();
+                e.stopPropagation();
+            }
+        }
+    });
+}
+
+// ── Footer resize ────────────────────────────────────────
+function setupFooterResize() {
+    const hud = document.querySelector('.hud');
+    const handle = document.querySelector('.footer-handle');
+    let dragging = false, startY = 0, startH = 0;
+    const MIN_H = 6, MAX_H = 400;
+
+    handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startY = e.clientY;
+        startH = parseInt(getComputedStyle(hud).gridTemplateRows.split(' ').pop()) || 160;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const newH = Math.max(MIN_H, Math.min(MAX_H, startH + (startY - e.clientY)));
+        hud.style.gridTemplateRows = `1fr ${newH}px`;
+        map.resize();
+    });
+    window.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+    handle.addEventListener('dblclick', () => {
+        const curH = parseInt(getComputedStyle(hud).gridTemplateRows.split(' ').pop()) || 160;
+        hud.style.gridTemplateRows = `1fr ${curH <= MIN_H + 10 ? 160 : MIN_H}px`;
+        map.resize();
+    });
+}
+
+// ── Bootstrap ────────────────────────────────────────────
+async function loadSignalHistory() {
+    try {
+        const resp = await fetch('/api/signals/history?hours=24');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        for (const [key, info] of Object.entries(data))
+            state.signalHistory[key] = info.data || [];
+    } catch (e) { console.error('History load:', e); }
+}
+
+// ── Init ─────────────────────────────────────────────────
+async function init() {
+    setupMapClick();
+    setupDelegation();
+
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    connectStream();
+
+    // Fire all initial data loads in parallel
+    Promise.all([
+        loadSignalHistory(),
+        fetch('/api/threats').then(r => r.ok ? r.json() : null).then(d => d && updateThreatMonitor(d)).catch(() => {}),
+        fetch('/api/seismicity/summary').then(r => r.ok ? r.json() : null).then(d => d && updateSeismicitySummary(d)).catch(() => {}),
+        fetch('/api/dart/status').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateDartMarkers(d); updateDartSummary(d); } }).catch(() => {}),
+        fetch('/api/tidal/sensitivity').then(r => r.ok ? r.json() : null).then(d => d && updateTidalRipples(d)).catch(() => {}),
+        fetch('/api/volcanic/activity').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateVolcanicSummary(d); updateVolcanoMarkers(d); } }).catch(() => {}),
+        fetch('/api/seedlink/stations').then(r => r.ok ? r.json() : null).then(d => { if (d) updateStationMarkers(d); }).catch(() => {}),
+        Promise.all([fetch('/api/forecast/active'), fetch('/api/forecast/metrics')])
+            .then(async ([ar, mr]) => {
+                if (ar.ok && mr.ok) updateForecastPanel({ active: await ar.json(), metrics: await mr.json() });
+            }).catch(() => {}),
+    ]);
+    setInterval(refreshFaultRisk, CONFIG.FAULT_RISK_INTERVAL);
+    setInterval(refreshHeatmap, CONFIG.HEATMAP_INTERVAL);
+    setInterval(async () => {
+        try {
+            const resp = await fetch('/api/seismicity/summary');
+            if (resp.ok) updateSeismicitySummary(await resp.json());
+        } catch (e) {}
+    }, 60000);
+
+    const savedMag = localStorage.getItem('qw_filterMag');
+    const savedHours = localStorage.getItem('qw_filterHours');
+    if (savedMag) state.filterMag = parseFloat(savedMag);
+    if (savedHours) state.filterHours = parseInt(savedHours);
+    document.querySelectorAll('.eq-filter-btn[data-mag]').forEach(btn => {
+        if (parseFloat(btn.dataset.mag) === state.filterMag) {
+            document.querySelectorAll('.eq-filter-btn[data-mag]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.eq-filter-btn[data-mag]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.filterMag = parseFloat(btn.dataset.mag);
+            localStorage.setItem('qw_filterMag', state.filterMag);
+            if (state.earthquakes.length) updateEqFeed(state.earthquakes);
+            applyMapFilter();
+        });
+    });
+    document.querySelectorAll('.eq-filter-btn[data-hours]').forEach(btn => {
+        if (parseInt(btn.dataset.hours) === state.filterHours) {
+            document.querySelectorAll('.eq-filter-btn[data-hours]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.eq-filter-btn[data-hours]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            state.filterHours = parseInt(btn.dataset.hours);
+            localStorage.setItem('qw_filterHours', state.filterHours);
+            if (state.earthquakes.length) updateEqFeed(state.earthquakes);
+            applyMapFilter();
+        });
+    });
+}
+
+init();

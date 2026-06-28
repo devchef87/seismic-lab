@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeismicLab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body>
+    <div class="hud">
+        <aside class="sidebar sidebar-left">
+            <div class="sidebar-header">
+                <div class="brand-group">
+                    <span class="brand">SeismicLab</span>
+                    <span class="brand-dot"></span>
+                    <span class="brand-sub" id="signal-status">connecting</span>
+                </div>
+            </div>
+            <div class="eq-filters">
+                <div class="eq-filter-row">
+                    <button class="eq-filter-btn active" data-mag="3.5">3.5+</button>
+                    <button class="eq-filter-btn" data-mag="4.5">4.5+</button>
+                    <button class="eq-filter-btn" data-mag="5.0">5+</button>
+                    <button class="eq-filter-btn" data-mag="6.0">6+</button>
+                </div>
+                <div class="eq-filter-row">
+                    <button class="eq-filter-btn" data-hours="6">6h</button>
+                    <button class="eq-filter-btn" data-hours="12">12h</button>
+                    <button class="eq-filter-btn active" data-hours="24">24h</button>
+                    <button class="eq-filter-btn" data-hours="48">48h</button>
+                    <button class="eq-filter-btn" data-hours="168">7d</button>
+                </div>
+                <div class="eq-filter-count" id="eq-count"></div>
+            </div>
+            <div class="sidebar-scroll">
+                <div id="eq-feed" class="eq-feed"></div>
+            </div>
+        </aside>
+
+        <div class="center-col">
+            <div id="map"></div>
+            <div class="map-clock">
+                <span class="clock" id="hud-time">00:00:00</span>
+                <span class="clock-tz">UTC</span>
+            </div>
+            <div id="seismograph-panel" class="seismograph-panel" style="display:none">
+                <div class="seismograph-header">
+                    <div class="seismograph-info">
+                        <span class="seismograph-station" id="seismo-station"></span>
+                        <span class="seismograph-name" id="seismo-name"></span>
+                        <span class="seismograph-channel" id="seismo-channel">BHZ</span>
+                    </div>
+                    <div class="seismograph-modes">
+                        <button class="seismo-mode-btn active" data-mode="waveform">Waveform</button>
+                        <button class="seismo-mode-btn" data-mode="resonance">Resonance</button>
+                    </div>
+                    <div class="seismograph-scales" id="seismo-scales">
+                        <button class="seismo-scale-btn active" data-scale="live">Live</button>
+                        <button class="seismo-scale-btn" data-scale="6h">6h</button>
+                        <button class="seismo-scale-btn" data-scale="12h">12h</button>
+                        <button class="seismo-scale-btn" data-scale="24h">24h</button>
+                    </div>
+                    <div class="seismograph-stats">
+                        <span class="seismograph-amp" id="seismo-amp"></span>
+                        <span class="seismograph-ratio" id="seismo-ratio"></span>
+                    </div>
+                    <button class="seismograph-close" id="seismo-close">&times;</button>
+                </div>
+                <canvas id="seismo-canvas"></canvas>
+            </div>
+        </div>
+
+        <aside class="sidebar sidebar-right">
+            <div class="panel-scroll">
+                <div class="panel-section">
+                    <div class="section-label">Active Zones</div>
+                    <div id="zone-list" class="zone-list">
+                        <div class="panel-muted">Scanning...</div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="section-label">AI Forecast</div>
+                    <div id="forecast-list" class="forecast-list">
+                        <div class="panel-muted">Initializing...</div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="section-label">Conditions</div>
+                    <div id="conditions-panel" class="conditions-panel"></div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="section-label">Global Seismicity (24h)</div>
+                    <div id="seismicity-summary" class="seismicity-summary"></div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="section-label">Volcanic Activity</div>
+                    <div id="volcanic-summary" class="volcanic-summary">
+                        <div class="panel-muted">Scanning...</div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <div class="section-label">DART Network</div>
+                    <div id="dart-summary" class="dart-summary">
+                        <div class="panel-muted">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- footer removed -->
+    </div>
+
+    <div class="analysis-drawer" id="analysis-drawer">
+        <div class="analysis-close" id="analysis-close">&#10005;</div>
+        <div class="analysis-inner" id="analysis-content"></div>
+    </div>
+
+    <div class="wb-overlay" id="wb-overlay">
+        <div class="wb-topbar">
+            <div class="wb-topbar-left">
+                <span class="wb-zone-name" id="wb-zone-name">Zone Analysis</span>
+            </div>
+            <div class="wb-topbar-center">
+                <button class="wb-time-btn active" data-hours="6">6h</button>
+                <button class="wb-time-btn" data-hours="24">24h</button>
+                <button class="wb-time-btn" data-hours="48">48h</button>
+                <button class="wb-time-btn" data-hours="168">7d</button>
+                <button class="wb-time-btn" data-hours="720">30d</button>
+            </div>
+            <div class="wb-topbar-right">
+                <div class="wb-close" id="wb-close">&#10005;</div>
+            </div>
+        </div>
+        <div class="wb-body">
+            <aside class="wb-sidebar" id="wb-sidebar"></aside>
+            <main class="wb-main" id="wb-main">
+                <div class="wb-empty">Select features from the sidebar to begin analysis</div>
+            </main>
+        </div>
+    </div>
+
+    <div class="eq-detail" id="eq-detail">
+        <div class="detail-close" id="detail-close">&#10005;</div>
+        <div id="detail-content"></div>
+    </div>
+
+    <div class="fc-overlay" id="fc-overlay">
+        <div class="fc-close" id="fc-close">&#10005;</div>
+        <div class="fc-content" id="fc-content"></div>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+    <script src="/static/seismiclab.js?v=1"></script>
+</body>
+</html>
