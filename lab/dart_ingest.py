@@ -332,7 +332,7 @@ def _send_dart_alert(alerts):
         """
         subject = f"DART Alert: {len(alerts)} buoy(s) in {level} mode"
         _send_email(subject, html)
-        print(f"  Alert email sent to {os.environ.get('RECIPIENT', 'ryan@axomlabs.ai')}")
+        print(f"  Alert email sent to {os.environ.get('ALERT_RECIPIENT', '')}")
     except Exception as e:
         print(f"  Warning: failed to send alert email: {e}")
 

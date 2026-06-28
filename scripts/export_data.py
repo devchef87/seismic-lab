@@ -46,7 +46,7 @@ log = logging.getLogger("export_data")
 # ---------------------------------------------------------------------------
 DEFAULT_DB = "data/seismiclab.db"
 DEFAULT_OUTPUT = "export/"
-HF_REPO = "AxomLabs/seismic-lab-data"
+HF_REPO = "Groovedev/seismic-lab-data"
 CHUNK_SIZE = 500_000
 
 # ---------------------------------------------------------------------------

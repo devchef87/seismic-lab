@@ -4,6 +4,10 @@ Real-time seismic intelligence platform. Multi-source data fusion for earthquake
 
 **Live dashboard** with 24 seismic stations, DART buoy network, solar wind, geomagnetic indices, tidal stress, thermal anomalies, and volcanic activity — all in one place.
 
+## Disclaimer
+
+I'm not a seismologist, scientist, or domain expert of any kind — I'm a software engineer who got curious about earthquakes and fell down a rabbit hole. I broke my foot recently and have been laid up, so this became my boredom buster. The data correlations and models here are experimental and should not be used for any real-world safety decisions. If you actually know seismology, I'd love your input — that's the whole point of open sourcing this.
+
 ## What makes this different
 
 Most seismic tools pull from one or two data sources. SeismicLab ingests from **27 sources** across 5 domains and correlates signals that are rarely studied together:
@@ -38,7 +42,7 @@ Open `http://localhost:8000` in your browser.
 
 ## Dataset
 
-The full dataset is hosted on HuggingFace: [AxomLabs/seismic-lab-data](https://huggingface.co/datasets/AxomLabs/seismic-lab-data)
+The full dataset is hosted on HuggingFace: [Groovedev/seismic-lab-data](https://huggingface.co/datasets/Groovedev/seismic-lab-data)
 
 Available as compressed Parquet files, partitioned by year. Updated daily.
 
@@ -76,7 +80,7 @@ The HUD provides:
 
 ## Research
 
-The `lab/` directory contains reproducible research experiments:
+The `lab/` directory contains reproducible experiments. These are exploratory — I'm learning as I go:
 
 - **`solar_seismic_coupling.py`** — Statistical analysis of solar wind / geomagnetic correlations with M6.5+ seismicity. Finding: 2.3x increased likelihood during high solar wind periods (p=0.02).
 - **`tidal_triggering.py`** — Tidal stress analysis on fault systems. Seafloor pressure trend reversals significant at p=0.02 before M6.5+ events.
@@ -126,12 +130,13 @@ MIT
 
 ## Contributing
 
-This is an active research project. We're especially interested in:
+This is a hobby project that grew into something I think others might find useful. I'm especially interested in contributions from people who actually know what they're doing in these areas:
 
+- Seismology / geophysics domain knowledge
 - New data source integrations
 - Feature engineering for prediction models
 - Model architectures beyond XGBoost and ST-GNN
 - Dashboard UX improvements
 - Statistical analysis of cross-domain correlations
 
-Built by [Axom Labs](https://axomlabs.ai)
+Built by [Groove](https://groovedev.ai)

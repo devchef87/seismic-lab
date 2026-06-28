@@ -16,10 +16,10 @@ from googleapiclient.discovery import build
 log = logging.getLogger("seismiclab.alerts")
 UTC = timezone.utc
 
-ENV_PATH = Path("/home/axom/Desktop/Axom/.env")
+ENV_PATH = Path(os.environ.get("ENV_PATH", str(Path(__file__).parent / ".env")))
 PREDICTION_LOG = Path(__file__).parent / "data" / "predictions.jsonl"
-SENDER = "support@motovizion.com"
-RECIPIENT = "ryan@axomlabs.ai"
+SENDER = os.environ.get("ALERT_SENDER", "")
+RECIPIENT = os.environ.get("ALERT_RECIPIENT", "")
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 ESCALATE_THRESHOLD = 0.60

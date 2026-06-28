@@ -25,7 +25,7 @@ log = logging.getLogger("download_data")
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-HF_REPO = "AxomLabs/seismic-lab-data"
+HF_REPO = "Groovedev/seismic-lab-data"
 DEFAULT_DB = "data/seismiclab.db"
 
 # ---------------------------------------------------------------------------
