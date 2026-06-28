@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="/static/style.css?v=1">
+    <link rel="stylesheet" href="/static/style.css?v=120">
 </head>
 <body>
     <div class="hud">
@@ -43,6 +43,87 @@
 
         <div class="center-col">
             <div id="map"></div>
+            <div class="map-legend" id="map-legend">
+                <button class="legend-toggle" id="legend-toggle">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <rect x="1" y="2" width="5" height="3" rx="0.5" fill="rgba(255,255,255,0.5)"/>
+                        <rect x="1" y="7" width="5" height="3" rx="0.5" fill="rgba(255,255,255,0.3)"/>
+                        <rect x="1" y="12" width="5" height="3" rx="0.5" fill="rgba(255,255,255,0.2)"/>
+                        <line x1="8" y1="3.5" x2="15" y2="3.5" stroke="rgba(255,255,255,0.5)" stroke-width="1.2"/>
+                        <line x1="8" y1="8.5" x2="15" y2="8.5" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
+                        <line x1="8" y1="13.5" x2="13" y2="13.5" stroke="rgba(255,255,255,0.2)" stroke-width="1.2"/>
+                    </svg>
+                    <span>Layers</span>
+                </button>
+                <div class="legend-panel" id="legend-panel">
+                    <div class="legend-header">
+                        <span class="legend-title">Map Layers</span>
+                        <button class="legend-close" id="legend-close">&times;</button>
+                    </div>
+                    <div class="legend-body">
+                        <div class="legend-section">
+                            <div class="legend-item" data-layer="earthquakes">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch eq-swatch"></div>
+                                <span class="legend-label">Earthquakes</span>
+                            </div>
+                            <div class="legend-item" data-layer="heatmap">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch heat-swatch"></div>
+                                <span class="legend-label">Seismicity Heatmap</span>
+                            </div>
+                            <div class="legend-item" data-layer="plates">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch plate-swatch"></div>
+                                <span class="legend-label">Plate Boundaries</span>
+                            </div>
+                            <div class="legend-item" data-layer="faults">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch fault-swatch"></div>
+                                <span class="legend-label">Fault Risk</span>
+                            </div>
+                            <div class="legend-item" data-layer="stations">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch station-swatch"></div>
+                                <span class="legend-label">Seismic Stations</span>
+                            </div>
+                            <div class="legend-item" data-layer="dart">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch dart-swatch"></div>
+                                <span class="legend-label">DART Buoys</span>
+                            </div>
+                            <div class="legend-item" data-layer="tidal">
+                                <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
+                                <div class="legend-swatch tidal-swatch"></div>
+                                <span class="legend-label">Tidal Stress</span>
+                            </div>
+                        </div>
+                        <div class="legend-divider"></div>
+                        <div class="legend-section">
+                            <div class="legend-section-head">Volcanic Activity</div>
+                            <div class="legend-item" data-layer="volc-high">
+                                <label class="legend-switch"><input type="checkbox"><span class="legend-slider"></span></label>
+                                <div class="legend-swatch volc-high-swatch"></div>
+                                <span class="legend-label">High</span>
+                                <span class="legend-count" id="volc-high-count">0</span>
+                            </div>
+                            <div class="legend-item" data-layer="volc-elevated">
+                                <label class="legend-switch"><input type="checkbox"><span class="legend-slider"></span></label>
+                                <div class="legend-swatch volc-elev-swatch"></div>
+                                <span class="legend-label">Elevated</span>
+                                <span class="legend-count" id="volc-elevated-count">0</span>
+                            </div>
+                            <div class="legend-item" data-layer="volc-active">
+                                <label class="legend-switch"><input type="checkbox"><span class="legend-slider"></span></label>
+                                <div class="legend-swatch volc-active-swatch"></div>
+                                <span class="legend-label">Active</span>
+                                <span class="legend-count" id="volc-active-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="map-clock">
                 <span class="clock" id="hud-time">00:00:00</span>
                 <span class="clock-tz">UTC</span>
@@ -101,13 +182,6 @@
                 </div>
 
                 <div class="panel-section">
-                    <div class="section-label">Volcanic Activity</div>
-                    <div id="volcanic-summary" class="volcanic-summary">
-                        <div class="panel-muted">Scanning...</div>
-                    </div>
-                </div>
-
-                <div class="panel-section">
                     <div class="section-label">DART Network</div>
                     <div id="dart-summary" class="dart-summary">
                         <div class="panel-muted">Loading...</div>
@@ -159,6 +233,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-    <script src="/static/seismiclab.js?v=1"></script>
+    <script src="/static/seismiclab.js?v=2"></script>
 </body>
 </html>

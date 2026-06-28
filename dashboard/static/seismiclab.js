@@ -545,55 +545,11 @@ function updateDartSummary(data) {
 }
 
 function updateVolcanicSummary(data) {
-    const el = document.getElementById('volcanic-summary');
-    if (!el || !data || !data.volcanoes) return;
-
+    if (!data || !data.volcanoes) return;
     state._volcanicData = data;
-    const volcanoes = data.volcanoes;
-    const high = volcanoes.filter(v => v.level === 'high');
-    const elevated = volcanoes.filter(v => v.level === 'elevated');
-    const active = volcanoes.filter(v => v.level === 'active');
-
-    const activeVids = new Set(Object.keys(state.volcanoMarkers));
-
-    const highCls = high.length > 0 ? ' volcanic-count-high' : '';
-    const activeCls = active.length > 0 ? ' volcanic-count-active' : '';
-    let html = `<div class="volcanic-status-row">
-        <span class="volcanic-count${highCls}">${high.length}</span> high
-        <span class="volcanic-sep">/</span>
-        <span class="volcanic-count">${elevated.length}</span> elevated
-        <span class="volcanic-sep">/</span>
-        <span class="volcanic-count${activeCls}">${active.length}</span> active
-    </div>`;
-
-    const show = [...high, ...elevated.slice(0, 5), ...active];
-    if (show.length > 0) {
-        html += '<div class="volcanic-list">';
-        for (const v of show) {
-            const on = activeVids.has(String(v.id));
-            const frpLabel = v.max_frp > 0 ? `${v.max_frp.toFixed(0)}MW` : 'GVP';
-            html += `<div class="volcanic-row">
-                <label class="volcanic-toggle"><input type="checkbox" data-vid="${v.id}"${on ? ' checked' : ''}><span class="volcanic-check"></span></label>
-                <span class="volcanic-name" title="${v.name}">${v.name}</span>
-                <span class="volcanic-frp">${frpLabel}</span>
-                <span class="volcanic-badge ${v.level}">${v.level.toUpperCase()}</span>
-            </div>`;
-        }
-        html += '</div>';
+    if (window._updateLegendVolcanicCounts) {
+        window._updateLegendVolcanicCounts(data);
     }
-
-    el.innerHTML = html;
-
-    el.querySelectorAll('input[data-vid]').forEach(cb => {
-        cb.addEventListener('change', () => {
-            const vid = cb.dataset.vid;
-            if (cb.checked) {
-                _showVolcanoMarker(vid);
-            } else {
-                _hideVolcanoMarker(vid);
-            }
-        });
-    });
 }
 
 function _showVolcanoMarker(vid) {
@@ -1791,7 +1747,7 @@ async function openAiAnalysis(eqId, mag, place) {
 
     const termHeader = `<div class="terminal-header">
             <div class="terminal-dots"><div class="terminal-dot active"></div><div class="terminal-dot"></div><div class="terminal-dot"></div></div>
-            <div class="terminal-title">seismiclab — ai analysis — M${parseFloat(mag).toFixed(1)} ${place}</div>
+            <div class="terminal-title">seismiclab — analysis — M${parseFloat(mag).toFixed(1)} ${place}</div>
             <div class="terminal-model">opus-4.6</div>
         </div>`;
     content.innerHTML = termHeader +
@@ -1954,7 +1910,8 @@ function updateEarthquakeMarkers(quakes) {
             state.eqMarkers[eq.id] = { marker: m, mag: eq.magnitude, ts: eq.timestamp, visible: false };
         }
         const entry = state.eqMarkers[eq.id];
-        const visible = eq.magnitude >= state.filterMag && eq.timestamp >= cutoff;
+        const layerOn = !window._legendLayerOn || window._legendLayerOn('earthquakes');
+        const visible = layerOn && eq.magnitude >= state.filterMag && eq.timestamp >= cutoff;
         if (visible && !entry.visible) { entry.marker.addTo(map); entry.visible = true; }
         if (!visible && entry.visible) { entry.marker.remove(); entry.visible = false; }
     }
@@ -2007,6 +1964,9 @@ function updateStationMarkers(stations) {
                 .addTo(map);
             setTooltip(m, tipHtml);
             state.stationMarkers[key] = m;
+            if (window._legendLayerOn && !window._legendLayerOn('stations')) {
+                el.style.display = 'none';
+            }
         }
     }
 }
@@ -2700,6 +2660,9 @@ function updateTidalRipples(data) {
                 .addTo(map);
             setTooltip(m, tipHtml);
             state.tidalMarkers[z.id] = m;
+            if (window._legendLayerOn && !window._legendLayerOn('tidal')) {
+                el.style.display = 'none';
+            }
         }
     }
 
@@ -2750,6 +2713,9 @@ function updateDartMarkers(data) {
                 .addTo(map);
             setTooltip(m, tipHtml);
             state.dartMarkers[key] = m;
+            if (window._legendLayerOn && !window._legendLayerOn('dart')) {
+                el.style.display = 'none';
+            }
         }
     }
 }
@@ -3659,5 +3625,147 @@ async function init() {
         });
     });
 }
+
+// ── Map Legend ────────────────────────────────────────────
+(function initLegend() {
+    const legendEl = document.getElementById('map-legend');
+    const toggle = document.getElementById('legend-toggle');
+    const close = document.getElementById('legend-close');
+    const panel = document.getElementById('legend-panel');
+    if (!legendEl) return;
+
+    toggle.addEventListener('click', () => legendEl.classList.add('open'));
+    close.addEventListener('click', () => legendEl.classList.remove('open'));
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (legendEl.classList.contains('open') && !legendEl.contains(e.target)) {
+            legendEl.classList.remove('open');
+        }
+    });
+
+    // Layer visibility state
+    const layerState = {
+        earthquakes: true,
+        heatmap: true,
+        plates: true,
+        faults: true,
+        stations: true,
+        dart: true,
+        tidal: true,
+        'volc-high': false,
+        'volc-elevated': false,
+        'volc-active': false,
+    };
+
+    function setMarkerVisibility(markers, visible) {
+        for (const key of Object.keys(markers)) {
+            const m = markers[key];
+            const mk = m && m.marker ? m.marker : m;
+            if (!mk || !mk.getElement) continue;
+            mk.getElement().style.display = visible ? '' : 'none';
+        }
+    }
+
+    function applyLayer(layer, on) {
+        layerState[layer] = on;
+
+        if (!mapReady) return;
+
+        switch (layer) {
+            case 'earthquakes':
+                setMarkerVisibility(state.eqMarkers, on);
+                break;
+            case 'heatmap':
+                try { map.setLayoutProperty('eq-heatmap', 'visibility', on ? 'visible' : 'none'); } catch(e) {}
+                break;
+            case 'plates':
+                try { map.setLayoutProperty('plate-boundaries', 'visibility', on ? 'visible' : 'none'); } catch(e) {}
+                break;
+            case 'faults':
+                try {
+                    map.setLayoutProperty('fault-heatmap', 'visibility', on ? 'visible' : 'none');
+                    map.setLayoutProperty('fault-lines-glow', 'visibility', on ? 'visible' : 'none');
+                    map.setLayoutProperty('fault-lines-core', 'visibility', on ? 'visible' : 'none');
+                } catch(e) {}
+                break;
+            case 'stations':
+                setMarkerVisibility(state.stationMarkers, on);
+                break;
+            case 'dart':
+                setMarkerVisibility(state.dartMarkers, on);
+                break;
+            case 'tidal':
+                setMarkerVisibility(state.tidalMarkers, on);
+                break;
+            case 'volc-high':
+            case 'volc-elevated':
+            case 'volc-active':
+                _applyVolcanicFilter();
+                break;
+        }
+    }
+
+    function _applyVolcanicFilter() {
+        const data = state._volcanicData;
+        if (!data || !data.volcanoes) return;
+
+        const levelMap = {
+            'volc-high': 'high',
+            'volc-elevated': 'elevated',
+            'volc-active': 'active',
+        };
+
+        const enabledLevels = new Set();
+        for (const [k, v] of Object.entries(levelMap)) {
+            if (layerState[k]) enabledLevels.add(v);
+        }
+
+        // Remove markers for levels that are off
+        for (const key of Object.keys(state.volcanoMarkers)) {
+            const v = data.volcanoes.find(x => String(x.id) === key);
+            if (!v || !enabledLevels.has(v.level)) {
+                _hideVolcanoMarker(key);
+            }
+        }
+
+        // Add markers for levels that are on
+        for (const v of data.volcanoes) {
+            if (enabledLevels.has(v.level)) {
+                _showVolcanoMarker(v.id);
+            }
+        }
+    }
+
+    // Wire up toggle switches
+    panel.querySelectorAll('.legend-item').forEach(item => {
+        const layer = item.dataset.layer;
+        const cb = item.querySelector('input[type="checkbox"]');
+        if (!layer || !cb) return;
+
+        cb.addEventListener('change', () => {
+            applyLayer(layer, cb.checked);
+        });
+    });
+
+    // Expose so volcanic data updates can refresh counts
+    window._updateLegendVolcanicCounts = function(data) {
+        if (!data || !data.volcanoes) return;
+        const high = data.volcanoes.filter(v => v.level === 'high').length;
+        const elevated = data.volcanoes.filter(v => v.level === 'elevated').length;
+        const active = data.volcanoes.filter(v => v.level === 'active').length;
+        const hEl = document.getElementById('volc-high-count');
+        const eEl = document.getElementById('volc-elevated-count');
+        const aEl = document.getElementById('volc-active-count');
+        if (hEl) hEl.textContent = high;
+        if (eEl) eEl.textContent = elevated;
+        if (aEl) aEl.textContent = active;
+    };
+
+    // Expose layer state check for marker update functions
+    window._legendLayerOn = function(layer) {
+        return layerState[layer] !== false;
+    };
+})();
 
 init();
