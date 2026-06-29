@@ -363,6 +363,7 @@ map.on('load', () => {
     mapReady = true;
     refreshFaultRisk();
     refreshHeatmap();
+    if (_swarmWatchData) updateSwarmPolygons(_swarmWatchData);
 });
 
 // ── Region name guesser ──────────────────────────────────
@@ -3029,8 +3030,8 @@ function renderSwarmDetail(zone, cells, data) {
         const cPct = (c.escalation_prob_72h * 100).toFixed(1);
         const cLift = c.lift_vs_base.toFixed(1);
         const cAlert = c.alert_level.toLowerCase();
-        const latC = ((c.lat_range[0] + c.lat_range[1]) / 2);
-        const lonC = ((c.lon_range[0] + c.lon_range[1]) / 2);
+        const latC = c.centroid ? c.centroid[0] : (c.lat_range[0] + c.lat_range[1]) / 2;
+        const lonC = c.centroid ? c.centroid[1] : (c.lon_range[0] + c.lon_range[1]) / 2;
         const locStr = `${Math.abs(latC).toFixed(0)}°${latC >= 0 ? 'N' : 'S'}, ${Math.abs(lonC).toFixed(0)}°${lonC >= 0 ? 'E' : 'W'}`;
 
         cellsHtml += `<div class="sw-cell-row">
@@ -3121,8 +3122,8 @@ function renderSwarmDetail(zone, cells, data) {
         const fill = content.querySelector('.fc-gauge-fill');
         if (fill) fill.style.strokeDashoffset = offset;
 
-        const avgLat = allZoneCells.reduce((s, c) => s + (c.lat_range[0] + c.lat_range[1]) / 2, 0) / allZoneCells.length;
-        const avgLon = allZoneCells.reduce((s, c) => s + (c.lon_range[0] + c.lon_range[1]) / 2, 0) / allZoneCells.length;
+        const avgLat = allZoneCells.reduce((s, c) => s + (c.centroid ? c.centroid[0] : (c.lat_range[0] + c.lat_range[1]) / 2), 0) / allZoneCells.length;
+        const avgLon = allZoneCells.reduce((s, c) => s + (c.centroid ? c.centroid[1] : (c.lon_range[0] + c.lon_range[1]) / 2), 0) / allZoneCells.length;
         const nearest = findNearestStations(avgLat, avgLon, 2);
         const section = document.getElementById('fc-seismo-section');
         if (nearest.length > 0 && section) {
@@ -3138,36 +3139,40 @@ function renderSwarmDetail(zone, cells, data) {
     });
 }
 
+const _swarmMarkers = [];
+
 function updateSwarmPolygons(data) {
     if (!mapReady) return;
 
-    const features = (data.watch || []).map(w => ({
-        type: 'Feature',
-        properties: {
-            cell: w.cell,
-            zone: w.zone,
-            alert_level: w.alert_level,
-            prob: w.escalation_prob_72h,
-            lift: w.lift_vs_base,
-        },
-        geometry: {
-            type: 'Polygon',
-            coordinates: [[
-                [w.lon_range[0], w.lat_range[0]],
-                [w.lon_range[1], w.lat_range[0]],
-                [w.lon_range[1], w.lat_range[1]],
-                [w.lon_range[0], w.lat_range[1]],
-                [w.lon_range[0], w.lat_range[0]],
-            ]]
-        }
-    }));
+    // Clear old markers
+    for (const m of _swarmMarkers) m.remove();
+    _swarmMarkers.length = 0;
 
-    const geojson = { type: 'FeatureCollection', features };
+    const watch = data.watch || [];
 
+    // Extent outlines (tight cluster bbox, not the 10° scoring box)
+    const extentFeatures = watch
+        .filter(w => w.extent && w.alert_level !== 'NORMAL')
+        .map(w => ({
+            type: 'Feature',
+            properties: { alert_level: w.alert_level },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [[
+                    [w.extent[2], w.extent[0]],
+                    [w.extent[3], w.extent[0]],
+                    [w.extent[3], w.extent[1]],
+                    [w.extent[2], w.extent[1]],
+                    [w.extent[2], w.extent[0]],
+                ]]
+            }
+        }));
+
+    const extentGeo = { type: 'FeatureCollection', features: extentFeatures };
     if (map.getSource('swarm-cells')) {
-        map.getSource('swarm-cells').setData(geojson);
+        map.getSource('swarm-cells').setData(extentGeo);
     } else {
-        map.addSource('swarm-cells', { type: 'geojson', data: geojson });
+        map.addSource('swarm-cells', { type: 'geojson', data: extentGeo });
         map.addLayer({
             id: 'swarm-cells-fill',
             type: 'fill',
@@ -3175,12 +3180,12 @@ function updateSwarmPolygons(data) {
             paint: {
                 'fill-color': [
                     'match', ['get', 'alert_level'],
-                    'WARNING', 'rgba(220,70,50,0.15)',
-                    'WATCH', 'rgba(230,160,50,0.12)',
-                    'ADVISORY', 'rgba(220,200,60,0.1)',
+                    'WARNING', 'rgba(220,70,50,0.12)',
+                    'WATCH', 'rgba(230,160,50,0.10)',
+                    'ADVISORY', 'rgba(220,200,60,0.08)',
                     'rgba(160,160,160,0.03)'
                 ],
-                'fill-opacity': 0.7,
+                'fill-opacity': 0.8,
             }
         });
         map.addLayer({
@@ -3190,37 +3195,46 @@ function updateSwarmPolygons(data) {
             paint: {
                 'line-color': [
                     'match', ['get', 'alert_level'],
-                    'WARNING', 'rgba(220,70,50,0.6)',
-                    'WATCH', 'rgba(230,160,50,0.5)',
-                    'ADVISORY', 'rgba(220,200,60,0.35)',
+                    'WARNING', 'rgba(220,70,50,0.5)',
+                    'WATCH', 'rgba(230,160,50,0.4)',
+                    'ADVISORY', 'rgba(220,200,60,0.3)',
                     'rgba(160,160,160,0.1)'
                 ],
                 'line-width': 1,
+                'line-dasharray': [3, 2],
             }
         });
+    }
 
-        const swarmPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '240px' });
-        map.on('mousemove', 'swarm-cells-fill', (e) => {
-            if (!e.features || !e.features.length) return;
-            map.getCanvas().style.cursor = 'pointer';
-            const f = e.features[0].properties;
-            const zone = SW_ZONE_LABELS[f.zone] || f.zone;
-            const pct = (f.prob * 100).toFixed(1);
-            const lift = Number(f.lift).toFixed(1);
-            const color = SW_ALERT_COLORS[f.alert_level] || 'rgba(255,255,255,0.6)';
-            swarmPopup.setLngLat(e.lngLat)
-                .setHTML(`<div style="font-size:11px"><b>${zone}</b><br><span style="color:${color};font-weight:600">${f.alert_level}</span> · ${pct}% M5+ in 72h · ${lift}× baseline</div>`)
-                .addTo(map);
+    // Centroid markers
+    for (const w of watch) {
+        const c = w.centroid;
+        if (!c) continue;
+        const alertClass = w.alert_level.toLowerCase();
+        const pct = (w.escalation_prob_72h * 100).toFixed(1);
+        const zone = SW_ZONE_LABELS[w.zone] || w.zone;
+        const color = SW_ALERT_COLORS[w.alert_level] || 'rgba(160,160,160,0.6)';
+        const isElevated = w.alert_level !== 'NORMAL';
+
+        const size = isElevated ? 10 : 6;
+        const el = document.createElement('div');
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,${isElevated ? 0.4 : 0.1});cursor:pointer;transition:transform 0.15s;`;
+        if (isElevated) el.style.boxShadow = `0 0 6px ${color}`;
+
+        const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([c[1], c[0]])
+            .addTo(map);
+
+        const lift = w.lift_vs_base.toFixed(1);
+        const tipHtml = `<div style="font-size:11px"><b>${zone}</b><br><span style="color:${color};font-weight:600">${w.alert_level}</span> · ${pct}% M5+ in 72h · ${lift}× baseline</div>`;
+        setTooltip(marker, tipHtml);
+
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openSwarmDetail(w.zone);
         });
-        map.on('mouseleave', 'swarm-cells-fill', () => {
-            map.getCanvas().style.cursor = '';
-            swarmPopup.remove();
-        });
-        map.on('click', 'swarm-cells-fill', (e) => {
-            if (!e.features || !e.features.length) return;
-            const zone = e.features[0].properties.zone;
-            if (zone) openSwarmDetail(zone);
-        });
+
+        _swarmMarkers.push(marker);
     }
 }
 
