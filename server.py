@@ -235,7 +235,18 @@ def _fetch_volcanic_activity():
     conn.row_factory = sqlite3.Row
     cur_year = datetime.utcnow().year
     try:
-        # Source 1: FIRMS thermal hotspots (last 2 days, FRP >= 15)
+        # USGS HANS authoritative alert levels (HANS vnum == GVP volcano_number)
+        usgs_alerts = {}
+        try:
+            for a in conn.execute("SELECT vnum, alert_level FROM volcano_alerts").fetchall():
+                usgs_alerts[str(a["vnum"])] = a["alert_level"]
+        except Exception:
+            pass
+
+        # Source 1: FIRMS thermal hotspots ON the edifice (<= 15 km), last 2 days, FRP >= 15.
+        # The distance cap is essential: without it, a distant wildfire is attributed to the
+        # nearest volcano (e.g. a fire 90 km away flagged dormant Mt St Helens as "high").
+        # And FIRMS thermal alone is NOT authoritative — only USGS can call it "high".
         rows = conn.execute("""
             SELECT v.volcano_number, v.name, v.lat, v.lon, v.elevation_m,
                    v.volcano_type, v.region,
@@ -243,10 +254,12 @@ def _fetch_volcanic_activity():
                    MAX(t.brightness) as max_brightness,
                    MAX(t.frp) as max_frp,
                    ROUND(AVG(t.brightness), 1) as avg_brightness,
-                   MAX(t.acq_date) as last_detection
+                   MAX(t.acq_date) as last_detection,
+                   ROUND(MIN(t.nearest_volcano_dist_km), 1) as nearest_km
             FROM volcanoes v
             JOIN thermal_anomalies t ON t.nearest_volcano_id = v.volcano_number
             WHERE t.acq_date >= date('now', '-2 days')
+              AND t.nearest_volcano_dist_km <= 15
             GROUP BY v.volcano_number
             HAVING max_frp >= 15
             ORDER BY max_frp DESC
@@ -256,9 +269,12 @@ def _fetch_volcanic_activity():
         seen_ids = set()
         for r in rows:
             frp = r["max_frp"] or 0
-            if frp >= 50:
+            usgs = usgs_alerts.get(str(r["volcano_number"]))
+            # USGS is authoritative for "high"; on-edifice FIRMS thermal alone is "elevated"
+            # at most (could still be a flank fire — flagged via usgs_alert/source).
+            if usgs in ("WARNING", "WATCH"):
                 level = "high"
-            elif frp >= 15:
+            elif usgs == "ADVISORY" or frp >= 15:
                 level = "elevated"
             else:
                 continue
@@ -276,6 +292,9 @@ def _fetch_volcanic_activity():
                 "max_frp": round(frp, 1),
                 "avg_brightness": r["avg_brightness"],
                 "last_detection": r["last_detection"],
+                "thermal_dist_km": r["nearest_km"],
+                "usgs_alert": usgs,
+                "source": "USGS+FIRMS" if usgs else "FIRMS thermal (unconfirmed)",
                 "level": level,
             })
 
@@ -309,6 +328,10 @@ def _fetch_volcanic_activity():
             """, (r["volcano_number"],)).fetchone()
 
             frp = (thermal["max_frp"] or 0) if thermal else 0
+            usgs = usgs_alerts.get(str(r["volcano_number"]))
+            # USGS alert promotes a GVP-active volcano above the baseline "active"
+            level = ("high" if usgs in ("WARNING", "WATCH")
+                     else "elevated" if usgs == "ADVISORY" else "active")
             volcanoes.append({
                 "id": r["volcano_number"],
                 "name": r["name"],
@@ -322,8 +345,9 @@ def _fetch_volcanic_activity():
                 "max_frp": round(frp, 1),
                 "avg_brightness": (thermal["avg_brightness"] or 0) if thermal else 0,
                 "last_detection": (thermal["last_detection"] or "GVP") if thermal else "GVP",
-                "level": "active",
-                "source": "gvp",
+                "usgs_alert": usgs,
+                "level": level,
+                "source": "USGS+GVP" if usgs else "gvp",
             })
 
         volcanoes.sort(key=lambda v: (
