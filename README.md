@@ -36,6 +36,9 @@ python scripts/download_data.py
 
 # Start the server
 python server.py
+
+# (optional) start the realtime swarm-escalation watch services
+./run_realtime.sh start
 ```
 
 Open `http://localhost:8000` in your browser.
@@ -76,7 +79,30 @@ The HUD provides:
 - **Zone analysis**, active seismic zone detection with multi-signal correlation
 - **DART network**, seafloor pressure monitoring with mode transition detection
 - **Volcanic activity**, thermal anomaly tracking near active volcanoes
-- **AI forecasts**, experimental zone-level predictions (model in development)
+- **Swarm-escalation watch**, the live forecasting panel (see below), calibrated probability that an active swarm escalates to a mainshock
+
+## Swarm-Escalation Watch (the forecasting model)
+
+The forecasting panel doesn't try to predict arbitrary earthquakes, that turned out to be mostly an illusion. When I declustered the catalog and tested the original "will an M5+ happen in this zone" model on *independent* mainshocks, it scored near random (~0.54 AUC). Almost all the apparent skill was the trivial fact that aftershocks follow big quakes (Omori's law). So the model was rebuilt around the one question that's both honest and useful:
+
+> A seismic **swarm is active** here right now. What's the calibrated probability it
+> **escalates to an independent M5+ mainshock within 72h**, versus fizzling out (which ~94% of swarms do)?
+
+It's **declustered** (independent mainshocks only, no aftershock inflation), **calibrated** (when it says 30%, ~30% actually escalate, verified on held-out data), and **multi-signal**, a LightGBM model over seismicity rate/acceleration, b-value, tidal stress, DART seafloor loading, GPS crustal deformation, and a volcanic prior. Escalation discrimination runs ~0.67 AUC on a future-holdout test; the strongest zones (Alaska, New Zealand, South America, Japan/Kurils) reach 0.70-0.79. It's genuinely hard and far from solved, but it's an honest number on the right problem.
+
+Alert levels: **WARNING** (rare, high-confidence, ~72% precision), **WATCH**, **ADVISORY**, **NORMAL**. The panel is a live watchlist, often short or empty (empty = nothing building, not "all clear").
+
+### Running it
+
+```bash
+# starts 3 background services: live EMSC small-event poller,
+# volcanic-alert ingest, and the realtime scoring engine
+./run_realtime.sh start      # status | stop | restart
+
+# they keep data/tier2_watch.json current; the dashboard reads that file
+```
+
+The engine is **event-driven**: it caches slow signals (solar/geomag/tidal) hourly and rescores only the cells touched by new foreshocks, so an accelerating swarm updates within a minute, with a rising/falling trend. Schema and UI contract are in `TIER2_WATCH_API.md`; deployment notes in `TIER2_DEPLOYMENT_REPORT.md`.
 
 ## Research
 
@@ -88,6 +114,10 @@ The `lab/` directory contains reproducible experiments. These are exploratory, I
 - **`train_stgnn.py`**, Spatio-Temporal Graph Neural Network for multi-zone prediction.
 - **`train_zone_test.py`**, Zone-focused training with full feature set (seismic + solar + tidal + DART).
 - **`deep_backfill.py`**, 5-year seismic waveform backfill from FDSN/IRIS.
+- **`train_ensemble.py`**, the multi-signal feature pipeline + LightGBM trainer (occurrence and tier-2 escalation objectives) across 13 zones.
+- **`declustering_experiment.py`**, Gardner-Knopoff declustering test that showed the original occurrence model was largely scoring aftershocks, the finding that motivated the swarm-escalation reframe.
+- **`tier2_escalation.py`**, the swarm-escalation discrimination experiment (catalog-only vs multi-signal, confirming the non-seismic signals add real skill).
+- **`tier2_watch.py`**, trains + calibrates the deployed model and writes the alert-banded watch bundle.
 
 ## Architecture
 
@@ -99,6 +129,11 @@ prediction_engine.py   ST-GNN prediction engine
 threat.py              Zone threat detection
 event_analyzer.py      Post-event analysis
 alerts.py              Email notifications (optional)
+
+run_realtime.sh        Launcher for the 3 swarm-escalation services
+lab/realtime_engine.py    Event-driven tier-2 scoring -> data/tier2_watch.json
+lab/ingest_emsc_live.py   Live EMSC small-event (foreshock) poller
+lab/ingest_volcanic_alerts.py  USGS HANS volcanic alert ingest
 
 ingest/
   engine.py            Polling engine (27 sources on configurable intervals)
