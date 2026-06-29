@@ -37,7 +37,9 @@ LEVEL_NAMES = ["NORMAL", "ADVISORY", "WATCH", "WARNING"]
 # is scored everywhere (it trains on all data), but only surfaced as actionable alerts
 # here; elsewhere within-zone skill is ~chance (macro AUC 0.52) so swarms are shown
 # informational-only. WARNING is never issued — that band had 0% precision in holdout.
-PROVEN_ZONES = {"alaska", "south_america", "new_zealand", "japan_kurils"}
+# california added after a deep USGS catalog backfill (1985+) gave it enough escalation
+# examples to reach ~0.63 on the 2015+ window (best window — older data degrades it).
+PROVEN_ZONES = {"alaska", "south_america", "new_zealand", "japan_kurils", "california"}
 
 
 def _load_bundle():

@@ -85,8 +85,8 @@ Levels are set by **risk percentile** among active swarms (always populated, gra
 not fixed probability cuts. Suggested UI treatment:
 
 Alerts are only raised where `model_skill == "validated"` (Alaska, South America, New
-Zealand, Japan/Kurils — the zones with real holdout skill). Everywhere else the level is
-forced `NORMAL` regardless of probability.
+Zealand, Japan/Kurils, California — the zones with real holdout skill). Everywhere else
+the level is forced `NORMAL` regardless of probability.
 
 | level | meaning | ~population | UI |
 |-------|---------|-------------|-----|
@@ -122,7 +122,8 @@ triage bucket, the probability is the honest number. e.g.
 - Pooled AUC ~0.66, but honest **within-zone (macro) AUC ~0.52** — near chance globally.
   The pooled number is flattered by between-zone base-rate separation.
 - Real within-zone skill only in **Alaska (0.72), South America (0.73), New Zealand
-  (0.67), Japan/Kurils (0.59)** → these are the `validated` zones; alerts are scoped to them.
+  (0.67), Japan/Kurils (0.59), California (0.63, after a deep USGS catalog backfill)** →
+  these are the `validated` zones; alerts are scoped to them.
 - Calibration holds in the low/mid bands (predicted ~11% → actual ~11%); the top band did
   not generalize (hence WARNING removed). Lower bands are the trustworthy signal.
 - Separate per-zone models were tested and did **not** beat the pooled model scored in the
