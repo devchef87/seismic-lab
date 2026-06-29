@@ -153,8 +153,12 @@ def detect_swarm_clusters(conn, hour_epochs, trail_h=None, eps_km=150.0, min_sam
         clat = float(m[:, 0].mean()); clon = float(m[:, 1].mean())
         cells.append({
             "id": f"swarm_{clat:+.1f}_{clon:+.1f}", "parent": _region_name(clat, clon),
+            # 10deg scoring footprint (INTERNAL — keeps feature scale = training; not for display)
             "lat_range": [clat - 5, clat + 5], "lon_range": [clon - 5, clon + 5],
             "centroid": [round(clat, 2), round(clon, 2)], "n_recent": int(len(m)),
+            # tight extent of the actual cluster quakes (for an optional small map area)
+            "extent": [round(float(m[:, 0].min()), 2), round(float(m[:, 0].max()), 2),
+                       round(float(m[:, 1].min()), 2), round(float(m[:, 1].max()), 2)],
         })
     return cells
 
@@ -282,6 +286,7 @@ class Engine:
                 "prob_6h_ago": then, "trend_6h": delta, "direction": direction,
                 "nearby_volcanic_alert": va,
                 "centroid": cell.get("centroid"), "n_recent_quakes": cell.get("n_recent"),
+                "extent": cell.get("extent"),  # [minlat,maxlat,minlon,maxlon] of cluster quakes
             })
         watch.sort(key=lambda w: -w["escalation_prob_72h"])
         self.history = {c: [r for r in h if r[0] >= now_ep - HISTORY_KEEP_H * 3600]
