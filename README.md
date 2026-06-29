@@ -102,7 +102,7 @@ Alert levels: **WARNING** (rare, high-confidence, ~72% precision), **WATCH**, **
 # they keep data/tier2_watch.json current; the dashboard reads that file
 ```
 
-The engine is **event-driven**: it caches slow signals (solar/geomag/tidal) hourly and rescores only the cells touched by new foreshocks, so an accelerating swarm updates within a minute, with a rising/falling trend. Schema and UI contract are in `TIER2_WATCH_API.md`; deployment notes in `TIER2_DEPLOYMENT_REPORT.md`.
+Detection is **cluster-centered**: instead of a fixed lat/lon grid (which missed swarms outside its zones and split faults at cell boundaries), the engine clusters recent small events *anywhere on Earth* and scores a region centered on each swarm's own centroid. So it auto-covers active regions the fixed zones didn't (Tonga, Vanuatu, the western Aleutians, etc.) with no edge-splitting. It caches slow signals (solar/geomag/tidal) hourly and re-detects on new activity, with a rising/falling trend per swarm. (`--mode grid` still offers the original 13 fixed zones.) Schema and UI contract are in `TIER2_WATCH_API.md`; deployment notes in `TIER2_DEPLOYMENT_REPORT.md`.
 
 ## Research
 

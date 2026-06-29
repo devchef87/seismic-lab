@@ -19,6 +19,7 @@ import pandas as pd
 import sqlite3
 import importlib.util
 import lightgbm as lgb
+from sklearn.cluster import DBSCAN
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("te", os.path.join(_HERE, "train_ensemble.py"))
@@ -104,6 +105,60 @@ def _nearby_alert(cell, alerts):
     return best
 
 
+_NAMED_REGIONS = [  # friendly labels incl. gaps the fixed grid missed
+    ("indonesia", -12, 8, 95, 140), ("japan_kurils", 25, 50, 128, 155),
+    ("south_america", -60, 7, -82, -60), ("mexico_ca", 7, 25, -115, -77),
+    ("himalaya", 25, 42, 60, 100), ("alaska", 50, 72, -180, -130),
+    ("california", 32, 42, -125, -114), ("philippines", 8, 25, 117, 127),
+    ("mediterranean", 34, 43, 19, 45), ("caribbean", 10, 20, -77, -60),
+    ("new_zealand", -48, -34, 165, 180), ("png_solomon", -12, -3, 140, 160),
+    ("kamchatka", 50, 62, 156, 168), ("tonga_fiji", -25, -14, 175, 180),
+    ("tonga_fiji", -25, -14, -180, -173), ("vanuatu", -23, -11, 165, 172),
+    ("iran", 25, 40, 44, 60), ("w_aleutians", 50, 56, 170, 180),
+]
+
+def _region_name(lat, lon):
+    for name, a, b, c, d in _NAMED_REGIONS:
+        if a <= lat <= b and c <= lon <= d:
+            return name
+    return f"{abs(lat):.0f}{'N' if lat >= 0 else 'S'}_{abs(lon):.0f}{'E' if lon >= 0 else 'W'}"
+
+
+def detect_swarm_clusters(conn, hour_epochs, trail_h=None, eps_km=150.0, min_samples=None):
+    """Cluster-centered swarm detection — replaces the fixed grid for serving.
+
+    DBSCAN over recent small (M2.5-5) events ANYWHERE on Earth (haversine, so the
+    antimeridian works); each dense cluster becomes a 10deg cell centered on its
+    centroid. The region follows the swarm -> no grid gaps, no edge-splitting, and
+    feature scale stays ~10deg to match training. Returns dynamic cell dicts.
+    """
+    trail_h = trail_h or te.TIER2_TRAIL_H
+    min_samples = min_samples or te.TIER2_MIN_SMALL
+    now = hour_epochs[-1]
+    t0 = pd.Timestamp(now - trail_h * 3600, unit="s", tz="UTC").isoformat()
+    rows = conn.execute(
+        "SELECT lat, lon FROM earthquakes WHERE magnitude >= ? AND magnitude < ? "
+        "AND timestamp >= ? ", (te.TIER2_SMALL_MAG, te.MIN_MAG_TARGET, t0)).fetchall()
+    if len(rows) < min_samples:
+        return []
+    pts = np.radians(np.array(rows, dtype=float))
+    labels = DBSCAN(eps=eps_km / 6371.0, min_samples=min_samples,
+                    metric="haversine").fit_predict(pts)
+    arr = np.array(rows, dtype=float)
+    cells = []
+    for lbl in sorted(set(labels)):
+        if lbl == -1:
+            continue  # noise (isolated events, not a swarm)
+        m = arr[labels == lbl]
+        clat = float(m[:, 0].mean()); clon = float(m[:, 1].mean())
+        cells.append({
+            "id": f"swarm_{clat:+.1f}_{clon:+.1f}", "parent": _region_name(clat, clon),
+            "lat_range": [clat - 5, clat + 5], "lon_range": [clon - 5, clon + 5],
+            "centroid": [round(clat, 2), round(clon, 2)], "n_recent": int(len(m)),
+        })
+    return cells
+
+
 def score_cell(conn, cell, cache, model, cal, alert):
     feats = te.build_cell_features(conn, cell, cache.hours, cache.hour_epochs,
                                    cache.sig, cache.evt, cache.tidal_times, cache.tidal_values)
@@ -117,12 +172,20 @@ def score_cell(conn, cell, cache, model, cal, alert):
 
 
 class Engine:
-    def __init__(self):
+    def __init__(self, mode="cluster"):
+        self.mode = mode  # "cluster" (dynamic, global) or "grid" (fixed zones)
         self.model, self.cal, self.alert, self.base = _load_bundle()
         self.cache = GlobalCache()
         self.history = self._load_history()
         self.last_event_ts = self._max_event_ts()
         self.full_rescore()
+
+    def _cells(self, conn):
+        """Cell set to score: dynamic swarm clusters (default) or the fixed grid."""
+        if self.mode == "cluster":
+            cells = detect_swarm_clusters(conn, self.cache.hour_epochs)
+            return {c["id"]: c for c in cells}
+        return self.cache.cells
 
     def _load_history(self):
         try:
@@ -153,8 +216,9 @@ class Engine:
 
     def full_rescore(self):
         conn = sqlite3.connect(te.DB_PATH, timeout=60)
+        cells = self._cells(conn)
         self.watch_state = {}
-        for cid, cell in self.cache.cells.items():
+        for cid, cell in cells.items():
             s = score_cell(conn, cell, self.cache, self.model, self.cal, self.alert)
             if s:
                 self.watch_state[cid] = (cell, s)
@@ -162,26 +226,37 @@ class Engine:
         self.write()
 
     def tick(self):
-        # hourly global refresh
+        # hourly global refresh of slow signals
         if time.time() - self.cache.built_at > CACHE_REFRESH_H * 3600:
             self.cache.refresh()
             self.full_rescore()
             return
-        # event-driven: which cells got new small events?
+
+        if self.mode == "cluster":
+            # re-detect clusters + rescore (cluster set is dynamic; detection is cheap)
+            conn = sqlite3.connect(te.DB_PATH, timeout=60)
+            new = conn.execute("SELECT MAX(timestamp) FROM earthquakes WHERE magnitude>=?",
+                               (te.TIER2_SMALL_MAG,)).fetchone()[0]
+            conn.close()
+            if new and new != self.last_event_ts:
+                self.last_event_ts = new
+                self.full_rescore()
+                print(f"  [tick] new events -> re-detected swarms ({len(self.watch_state)} active)")
+            return
+
+        # grid mode: event-driven rescore of only the affected fixed cells
         conn = sqlite3.connect(te.DB_PATH, timeout=60)
         new = conn.execute("SELECT lat, lon, timestamp FROM earthquakes WHERE magnitude>=? "
                            "AND timestamp > ? ORDER BY timestamp",
                            (te.TIER2_SMALL_MAG, self.last_event_ts)).fetchall()
         if new:
             self.last_event_ts = new[-1][2]
-            affected = set()
+            affected = set(self.watch_state.keys())
             for la, lo, _ in new:
                 for cid, cell in self.cache.cells.items():
                     if (cell["lat_range"][0] <= la <= cell["lat_range"][1] and
                             cell["lon_range"][0] <= lo <= cell["lon_range"][1]):
                         affected.add(cid)
-            # also refresh currently-active cells (their fast features decay)
-            affected |= set(self.watch_state.keys())
             for cid in affected:
                 s = score_cell(conn, self.cache.cells[cid], self.cache, self.model, self.cal, self.alert)
                 if s:
@@ -206,6 +281,7 @@ class Engine:
                 "lift_vs_base": round(s["prob"] / max(self.base, 1e-6), 1),
                 "prob_6h_ago": then, "trend_6h": delta, "direction": direction,
                 "nearby_volcanic_alert": va,
+                "centroid": cell.get("centroid"), "n_recent_quakes": cell.get("n_recent"),
             })
         watch.sort(key=lambda w: -w["escalation_prob_72h"])
         self.history = {c: [r for r in h if r[0] >= now_ep - HISTORY_KEEP_H * 3600]
@@ -230,15 +306,17 @@ class Engine:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tick", type=int, default=60, help="seconds between event-driven ticks")
+    ap.add_argument("--tick", type=int, default=120, help="seconds between ticks")
+    ap.add_argument("--mode", choices=["cluster", "grid"], default="cluster",
+                    help="cluster = dynamic global swarm detection (default); grid = fixed zones")
     ap.add_argument("--once", action="store_true", help="single full pass then exit")
     args = ap.parse_args()
     if not (os.path.exists(MODEL) and os.path.exists(CALIB)):
         sys.exit(f"Model bundle missing — run tier2_watch.py first ({MODEL})")
-    eng = Engine()
+    eng = Engine(mode=args.mode)
     if args.once:
         return
-    print(f"  realtime engine live — {args.tick}s ticks")
+    print(f"  realtime engine live — {args.mode} mode, {args.tick}s ticks")
     while True:
         time.sleep(args.tick)
         try:

@@ -30,20 +30,29 @@ Regenerated each scoring cycle. Top-level:
 }
 ```
 
-Each `watch[]` entry:
+Detection is **cluster-centered**: swarms are found by clustering recent small events
+anywhere on Earth (DBSCAN, haversine), and each cluster becomes a region centered on
+its own centroid — so coverage isn't limited to fixed zones and a fault crossing a
+zone boundary isn't split. Each `watch[]` entry:
 
 | field | type | meaning |
 |-------|------|---------|
-| `cell` | string | grid-cell id, e.g. `south_america_-30_-072` |
-| `zone` | string | parent zone (indonesia, japan_kurils, south_america, mexico_ca, himalaya, alaska, california, philippines, mediterranean, caribbean, new_zealand, png_solomon, kamchatka) |
-| `lat_range` | [lo, hi] | cell latitude bounds (deg) — for map rendering |
-| `lon_range` | [lo, hi] | cell longitude bounds (deg) |
+| `cell` | string | dynamic swarm id, e.g. `swarm_-30.2_-070.0` (centroid-based) |
+| `zone` | string | region label — a known zone name where applicable, else a coordinate label (e.g. `tonga_fiji`, `50N_157E`) for swarms outside the named zones |
+| `centroid` | [lat, lon] | swarm centroid (deg) — the point to pin on the map |
+| `n_recent_quakes` | int | small (M2.5-5) events in the cluster over the trailing 72h |
+| `lat_range` | [lo, hi] | scoring-region latitude bounds (deg, ~10° box around centroid) |
+| `lon_range` | [lo, hi] | scoring-region longitude bounds (deg) |
 | `escalation_prob_72h` | float 0-1 | **calibrated** probability the swarm escalates to M5+ in 72h |
 | `alert_level` | string | NORMAL / ADVISORY / WATCH / WARNING (see below) |
 | `lift_vs_base` | float | `escalation_prob_72h / base_rate_72h` — how many× above baseline |
 
-**Only cells with an active swarm appear.** Absence of a cell = no active swarm
-(not "all clear" in a forecasting sense — there's simply nothing building there).
+For the map, pin the marker at `centroid`; `lat_range`/`lon_range` give the scoring
+footprint if you want to draw it. **Only active swarms appear.** Absence = no swarm
+building there (not "all clear" in a forecasting sense).
+
+(The engine also supports a fixed-grid mode (`--mode grid`) for the original 13 zones,
+but cluster mode is the default and recommended — it covers anywhere with activity.)
 
 ## Alert levels
 
