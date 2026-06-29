@@ -46,7 +46,8 @@ zone boundary isn't split. Each `watch[]` entry:
 | `lat_range` | [lo, hi] | **INTERNAL scoring footprint** (~10° box) — do NOT render; it's the feature-computation window, not a hazard region |
 | `lon_range` | [lo, hi] | internal scoring footprint — do NOT render |
 | `escalation_prob_72h` | float 0-1 | **calibrated** probability the swarm escalates to M5+ in 72h |
-| `alert_level` | string | NORMAL / ADVISORY / WATCH / WARNING (see below) |
+| `alert_level` | string | NORMAL / ADVISORY / WATCH (see below). WARNING is never emitted. |
+| `model_skill` | string | `validated` = zone has real holdout skill, render the alert. `experimental` = no within-zone skill, show the swarm informational-only and **ignore `alert_level`** (it's forced NORMAL). |
 | `lift_vs_base` | float | `escalation_prob_72h / base_rate_72h` — how many× above baseline |
 
 ### `quakes[]` — the individual events behind a swarm
@@ -83,12 +84,18 @@ but cluster mode is the default and recommended — it covers anywhere with acti
 Levels are set by **risk percentile** among active swarms (always populated, graded),
 not fixed probability cuts. Suggested UI treatment:
 
+Alerts are only raised where `model_skill == "validated"` (Alaska, South America, New
+Zealand, Japan/Kurils — the zones with real holdout skill). Everywhere else the level is
+forced `NORMAL` regardless of probability.
+
 | level | meaning | ~population | UI |
 |-------|---------|-------------|-----|
-| `WARNING` | top ~1% risk — high-confidence escalation | rare | red, prominent |
-| `WATCH` | top ~5% risk — notably elevated | uncommon | orange |
-| `ADVISORY` | top ~20% risk — modestly elevated | common | yellow |
-| `NORMAL` | active swarm, baseline risk | most | gray/info |
+| `WATCH` | top ~5% risk in a validated zone — notably elevated | rare | orange |
+| `ADVISORY` | top ~20% risk in a validated zone — modestly elevated | uncommon | yellow |
+| `NORMAL` | active swarm, baseline risk (or any swarm outside validated zones) | most | gray/info |
+
+> `WARNING` was removed: in holdout its highest-confidence predictions escalated **0%**
+> of the time (overfit tail), so the top band is capped to `WATCH`.
 
 Always show the **calibrated probability** alongside the level — the level is the
 triage bucket, the probability is the honest number. e.g.
@@ -98,8 +105,8 @@ triage bucket, the probability is the honest number. e.g.
 
 - Lead with the **question**, not a prediction: *"Active swarm detected — escalation risk: X%."*
 - Use **72h** explicitly; this is a 3-day escalation window, not an instant forecast.
-- A WARNING is a *watch posture*, not an evacuation order — even at the top tier,
-  it's "much more likely than usual," not certainty.
+- A WATCH is a *watch posture*, not an evacuation order — it's "much more likely than
+  usual," not certainty. Only shown in validated zones.
 - Where there's no active swarm, the honest state is "no swarm building," not
   "no earthquake risk."
 
@@ -112,6 +119,11 @@ triage bucket, the probability is the honest number. e.g.
 
 ## Performance (held-out test, 2025-09 → 2026-06)
 
-- Escalation AUC ~0.67; calibration verified (30%+ band → 72% actual escalation)
-- WARNING tier: high precision, low recall (cry-wolf-rarely, be-right-when-you-do)
-- Strongest zones: Alaska, New Zealand, South America, Japan/Kurils
+- Pooled AUC ~0.66, but honest **within-zone (macro) AUC ~0.52** — near chance globally.
+  The pooled number is flattered by between-zone base-rate separation.
+- Real within-zone skill only in **Alaska (0.72), South America (0.73), New Zealand
+  (0.67), Japan/Kurils (0.59)** → these are the `validated` zones; alerts are scoped to them.
+- Calibration holds in the low/mid bands (predicted ~11% → actual ~11%); the top band did
+  not generalize (hence WARNING removed). Lower bands are the trustworthy signal.
+- Separate per-zone models were tested and did **not** beat the pooled model scored in the
+  validated zones, so a single pooled model is used and scoped at serve time.

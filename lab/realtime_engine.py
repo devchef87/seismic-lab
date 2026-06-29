@@ -33,6 +33,11 @@ CACHE_WINDOW_DAYS = 200    # history depth for trailing features
 CACHE_REFRESH_H = 1.0      # rebuild global cache every hour
 HISTORY_KEEP_H = 48
 LEVEL_NAMES = ["NORMAL", "ADVISORY", "WATCH", "WARNING"]
+# Zones with genuine within-zone holdout skill (test AUC ~0.59-0.73). The pooled model
+# is scored everywhere (it trains on all data), but only surfaced as actionable alerts
+# here; elsewhere within-zone skill is ~chance (macro AUC 0.52) so swarms are shown
+# informational-only. WARNING is never issued — that band had 0% precision in holdout.
+PROVEN_ZONES = {"alaska", "south_america", "new_zealand", "japan_kurils"}
 
 
 def _load_bundle():
@@ -298,10 +303,19 @@ class Engine:
         for cid, (cell, s) in self.watch_state.items():
             then, delta, direction = self._record(cid, s["prob"], now_ep)
             va = _nearby_alert(cell, alerts)
+            zone = str(cell.get("parent", cid))
+            validated = zone in PROVEN_ZONES
+            # WARNING band was unreliable in holdout (0% precision) -> cap at WATCH.
+            # Outside validated zones the model has no real within-zone skill -> surface
+            # the swarm as informational only, not an actionable alert.
+            level = "WATCH" if s["level"] == "WARNING" else s["level"]
+            if not validated:
+                level = "NORMAL"
             watch.append({
-                "cell": cid, "zone": str(cell.get("parent", cid)),
+                "cell": cid, "zone": zone,
+                "model_skill": "validated" if validated else "experimental",
                 "lat_range": cell.get("lat_range"), "lon_range": cell.get("lon_range"),
-                "escalation_prob_72h": round(s["prob"], 3), "alert_level": s["level"],
+                "escalation_prob_72h": round(s["prob"], 3), "alert_level": level,
                 "lift_vs_base": round(s["prob"] / max(self.base, 1e-6), 1),
                 "prob_6h_ago": then, "trend_6h": delta, "direction": direction,
                 "nearby_volcanic_alert": va,

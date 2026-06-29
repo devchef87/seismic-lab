@@ -89,9 +89,9 @@ The forecasting panel doesn't try to predict arbitrary earthquakes, that turned 
 > A seismic **swarm is active** here right now. What's the calibrated probability it
 > **escalates to an independent M5+ mainshock within 72h**, versus fizzling out (which ~94% of swarms do)?
 
-It's **declustered** (independent mainshocks only, no aftershock inflation), **calibrated** (when it says 30%, ~30% actually escalate, verified on held-out data), and **multi-signal**, a LightGBM model over seismicity rate/acceleration, b-value, tidal stress, DART seafloor loading, GPS crustal deformation, and a volcanic prior. Escalation discrimination runs ~0.67 AUC on a future-holdout test; the strongest zones (Alaska, New Zealand, South America, Japan/Kurils) reach 0.70-0.79. It's genuinely hard and far from solved, but it's an honest number on the right problem.
+It's **declustered** (independent mainshocks only, no aftershock inflation), **calibrated** (when it says 30%, ~30% actually escalate, verified on held-out data), and **multi-signal**, a LightGBM model over seismicity rate/acceleration, b-value, tidal stress, DART seafloor loading, GPS crustal deformation, and a volcanic prior. On a future-holdout test the pooled discrimination is ~0.66 AUC, but the honest *within-zone* number — can it rank which swarm in a given region escalates? — is only ~0.52, near chance globally. Real within-zone skill exists in a handful of subduction zones (**Alaska, South America, New Zealand, Japan/Kurils**, ~0.59–0.73 AUC), so the live watch only raises alerts there and shows swarms elsewhere as informational. It's genuinely hard and far from solved — but it's an honest, calibrated number on the right problem, scoped to where it actually works.
 
-Alert levels: **WARNING** (rare, high-confidence, ~72% precision), **WATCH**, **ADVISORY**, **NORMAL**. The panel is a live watchlist, often short or empty (empty = nothing building, not "all clear").
+Alert levels: **WATCH**, **ADVISORY**, **NORMAL** — surfaced only in the validated zones above. (A WARNING tier was dropped: in holdout its highest-confidence calls escalated 0% of the time — all false alarms — so it's capped to WATCH.) The panel is a live watchlist, often short or empty (empty = nothing building, not "all clear").
 
 ### Running it
 
