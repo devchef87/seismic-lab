@@ -137,28 +137,48 @@ def detect_swarm_clusters(conn, hour_epochs, trail_h=None, eps_km=150.0, min_sam
     now = hour_epochs[-1]
     t0 = pd.Timestamp(now - trail_h * 3600, unit="s", tz="UTC").isoformat()
     rows = conn.execute(
-        "SELECT lat, lon FROM earthquakes WHERE magnitude >= ? AND magnitude < ? "
-        "AND timestamp >= ? ", (te.TIER2_SMALL_MAG, te.MIN_MAG_TARGET, t0)).fetchall()
+        "SELECT id, timestamp, magnitude, depth_km, lat, lon, place FROM earthquakes "
+        "WHERE magnitude >= ? AND magnitude < ? AND timestamp >= ? ",
+        (te.TIER2_SMALL_MAG, te.MIN_MAG_TARGET, t0)).fetchall()
+    # collapse duplicate catalog entries (same event from USGS + EMSC, or the legacy
+    # emsc_ ingest path) so a swarm isn't double-counted; key on (time, lat~, lon~, mag),
+    # prefer a USGS id when both exist
+    _uniq = {}
+    for r in rows:
+        k = (r[1], round(float(r[4]), 2), round(float(r[5]), 2), round(float(r[2]), 1))
+        if k not in _uniq or (str(r[0]).startswith("us") and not str(_uniq[k][0]).startswith("us")):
+            _uniq[k] = r
+    rows = list(_uniq.values())
     if len(rows) < min_samples:
         return []
-    pts = np.radians(np.array(rows, dtype=float))
+    latlon = np.array([[r[4], r[5]] for r in rows], dtype=float)
     labels = DBSCAN(eps=eps_km / 6371.0, min_samples=min_samples,
-                    metric="haversine").fit_predict(pts)
-    arr = np.array(rows, dtype=float)
+                    metric="haversine").fit_predict(np.radians(latlon))
     cells = []
     for lbl in sorted(set(labels)):
         if lbl == -1:
             continue  # noise (isolated events, not a swarm)
-        m = arr[labels == lbl]
+        idx = np.where(labels == lbl)[0]
+        m = latlon[idx]
         clat = float(m[:, 0].mean()); clon = float(m[:, 1].mean())
+        # the exact small events the model clustered into this swarm — so the UI can
+        # render precisely what the model saw (len == n_recent), most recent first
+        quakes = sorted(
+            [{"id": str(rows[i][0]), "time": str(rows[i][1]),
+              "mag": round(float(rows[i][2]), 1),
+              "depth_km": (round(abs(float(rows[i][3])), 1) if rows[i][3] is not None else None),
+              "lat": round(float(rows[i][4]), 3), "lon": round(float(rows[i][5]), 3),
+              "place": rows[i][6]} for i in idx],
+            key=lambda q: q["time"], reverse=True)
         cells.append({
             "id": f"swarm_{clat:+.1f}_{clon:+.1f}", "parent": _region_name(clat, clon),
             # 10deg scoring footprint (INTERNAL — keeps feature scale = training; not for display)
             "lat_range": [clat - 5, clat + 5], "lon_range": [clon - 5, clon + 5],
-            "centroid": [round(clat, 2), round(clon, 2)], "n_recent": int(len(m)),
+            "centroid": [round(clat, 2), round(clon, 2)], "n_recent": int(len(idx)),
             # tight extent of the actual cluster quakes (for an optional small map area)
             "extent": [round(float(m[:, 0].min()), 2), round(float(m[:, 0].max()), 2),
                        round(float(m[:, 1].min()), 2), round(float(m[:, 1].max()), 2)],
+            "quakes": quakes,  # the individual events behind n_recent (what the model saw)
         })
     return cells
 
@@ -287,6 +307,7 @@ class Engine:
                 "nearby_volcanic_alert": va,
                 "centroid": cell.get("centroid"), "n_recent_quakes": cell.get("n_recent"),
                 "extent": cell.get("extent"),  # [minlat,maxlat,minlon,maxlon] of cluster quakes
+                "quakes": cell.get("quakes"),  # exact events the model clustered (len == n_recent_quakes)
             })
         watch.sort(key=lambda w: -w["escalation_prob_72h"])
         self.history = {c: [r for r in h if r[0] >= now_ep - HISTORY_KEEP_H * 3600]

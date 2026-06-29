@@ -41,12 +41,33 @@ zone boundary isn't split. Each `watch[]` entry:
 | `zone` | string | region label — a known zone name where applicable, else a coordinate label (e.g. `tonga_fiji`, `50N_157E`) for swarms outside the named zones |
 | `centroid` | [lat, lon] | swarm centroid (deg) — **pin the map marker here** |
 | `extent` | [minlat, maxlat, minlon, maxlon] | tight bbox of the actual cluster quakes — use this if you want a small area outline |
-| `n_recent_quakes` | int | small (M2.5-5) events in the cluster over the trailing 72h |
+| `n_recent_quakes` | int | small (M2.5-5) events in the cluster over the trailing 72h (always `== quakes.length`) |
+| `quakes` | array | the **exact individual events** the model clustered into this swarm — render these to show what the model saw (see schema below) |
 | `lat_range` | [lo, hi] | **INTERNAL scoring footprint** (~10° box) — do NOT render; it's the feature-computation window, not a hazard region |
 | `lon_range` | [lo, hi] | internal scoring footprint — do NOT render |
 | `escalation_prob_72h` | float 0-1 | **calibrated** probability the swarm escalates to M5+ in 72h |
 | `alert_level` | string | NORMAL / ADVISORY / WATCH / WARNING (see below) |
 | `lift_vs_base` | float | `escalation_prob_72h / base_rate_72h` — how many× above baseline |
+
+### `quakes[]` — the individual events behind a swarm
+
+Each element is one small event the model grouped into the swarm, sorted **most-recent first**.
+`quakes.length` always equals `n_recent_quakes`, so you can render exactly what the model saw:
+
+```json
+{
+  "id": "emsc:20260626_0000239",   // catalog id (USGS preferred when an event is in both)
+  "time": "2026-06-26T08:58:43",   // UTC event time
+  "mag": 2.9,                       // magnitude
+  "depth_km": 15.0,                 // depth below surface (always positive)
+  "lat": -28.36, "lon": -67.22,     // epicenter
+  "place": "CATAMARCA, ARGENTINA"   // human label (may be null)
+}
+```
+
+Plot these as small dots (the foreshock swarm); the `centroid` marker is the swarm
+summary. The list is already de-duplicated — the same event reported by both USGS and
+EMSC is collapsed to one — so you won't see doubles.
 
 **Map rendering:** draw a **marker at `centroid`** (size/color by alert level), optionally
 a small outline from `extent`. Do **not** draw `lat_range`/`lon_range` — that's the ~10°

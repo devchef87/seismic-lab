@@ -5,14 +5,73 @@ import json
 import logging
 import threading
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
+import math
 
 from .sources import Sample
 
 log = logging.getLogger("quakewatch.store")
 
 DEFAULT_DB = Path(__file__).parent.parent / "data" / "quakewatch.db"
+
+# --- cross-agency earthquake de-duplication (USGS + EMSC report the same quake) ---
+# The same physical event arrives from two agencies under different id schemes, with
+# slightly different time/location/magnitude. Collapse to one row at ingest time so the
+# model doesn't double-count. Thresholds match scripts/dedup_earthquakes.py.
+_EQ_DT_S = 30.0
+_EQ_DIST_KM = 50.0
+_EQ_DMAG = 1.0
+
+
+def _eq_group(eid: str) -> str:
+    # one group per reporting contributor; coincident events from DIFFERENT contributors
+    # are the same physical quake (USGS `us`, tsunami centers `at`/`pt`, regional nets
+    # `ak`/`hv`/`pr`/..., and EMSC each solve it independently). See dedup_earthquakes.py.
+    if eid.startswith("emsc:"):
+        return "emsc"   # current EMSC ingest
+    if eid.startswith("emsc_"):
+        return "emscL"  # legacy EMSC ingest
+    return eid[:2]      # USGS-family network code: us, ak, at, ci, nc, hv, pr, tx, ...
+
+
+def _haversine_km(la1, lo1, la2, lo2):
+    r = 6371.0
+    p1, p2 = math.radians(la1), math.radians(la2)
+    dp = math.radians(la2 - la1)
+    dl = math.radians(lo2 - lo1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def _find_eq_twin(conn, eid, ts, lat, lon, mag):
+    """Return an existing earthquake id that is the SAME physical event from a
+    DIFFERENT source group (so a USGS event won't suppress another USGS event),
+    else None. Uses the (lat,lon,timestamp) index for a cheap candidate prefilter."""
+    if lat is None or lon is None or not ts:
+        return None
+    try:
+        t = datetime.fromisoformat(ts)
+    except Exception:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    lo = (t - timedelta(seconds=_EQ_DT_S)).isoformat()
+    hi = (t + timedelta(seconds=_EQ_DT_S)).isoformat()
+    g = _eq_group(eid)
+    m = mag if mag is not None else 0.0
+    for rid, rla, rlo, rmag in conn.execute(
+        "SELECT id, lat, lon, magnitude FROM earthquakes "
+        "WHERE timestamp BETWEEN ? AND ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?",
+        (lo, hi, lat - 0.5, lat + 0.5, lon - 0.5, lon + 0.5),
+    ):
+        if rid == eid or _eq_group(rid) == g or rla is None or rlo is None:
+            continue
+        if abs((rmag if rmag is not None else 0.0) - m) > _EQ_DMAG:
+            continue
+        if _haversine_km(lat, lon, rla, rlo) <= _EQ_DIST_KM:
+            return rid
+    return None
 
 
 class QuakeStore:
@@ -137,7 +196,12 @@ class QuakeStore:
 
                     if s.source in ("usgs_earthquake", "emsc_earthquake", "seedlink_detection") and s.metric == "magnitude":
                         eq_id = s.meta.get("id", "")
-                        if eq_id:
+                        # skip cross-agency twins (same quake already in from the other
+                        # catalog) so the two-source feed doesn't double-count events
+                        twin = None
+                        if eq_id and s.source in ("usgs_earthquake", "emsc_earthquake"):
+                            twin = _find_eq_twin(conn, eq_id, s.timestamp, s.lat, s.lon, s.value)
+                        if eq_id and twin is None:
                             cursor = conn.execute("""
                                 INSERT OR IGNORE INTO earthquakes
                                 (id, timestamp, magnitude, depth_km, lat, lon, place, type)

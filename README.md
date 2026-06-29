@@ -2,7 +2,7 @@
 
 Real-time seismic intelligence platform. Multi-source data fusion for earthquake monitoring, analysis, and experimental prediction.
 
-**Live dashboard** with 24 seismic stations, DART buoy network, solar wind, geomagnetic indices, tidal stress, thermal anomalies, and volcanic activity, all in one place.
+**Live dashboard** with 53 seismic stations (24 live-streamed via SeedLink), DART buoy network, solar wind, geomagnetic indices, tidal stress, thermal anomalies, and volcanic activity, all in one place.
 
 ## Disclaimer
 
@@ -14,13 +14,13 @@ Most seismic tools pull from one or two data sources. SeismicLab ingests from **
 
 | Domain | Sources | Data Points |
 |---|---|---|
-| Seismic | FDSN/IRIS SeedLink (24 stations), USGS, EMSC | 6.9M+ station metrics |
-| Oceanic | DART buoy network (40+ stations), NOAA tides | 11.4M+ pressure readings |
+| Seismic | FDSN/IRIS (53 stations, 24 live via SeedLink), USGS, EMSC | 41M+ station metrics |
+| Oceanic | DART buoy network (47 stations), NOAA tides | 11.4M+ pressure readings |
 | Solar/Space | NOAA SWPC, GOES magnetometer, NASA DONKI, OMNI | 13M+ samples |
 | Geomagnetic | Intermagnet, Kyoto Dst, GFZ Kp, cosmic rays | 1M+ samples |
 | Geophysical | Tidal potential, GPS strain, FIRMS thermal, OLR | 2M+ samples |
 
-**Total: 54M+ data points** with 5-year historical backfill.
+**Total: ~108M data points** with an 11-year historical backfill (2015–present).
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ cd seismic-lab
 # Install dependencies
 pip install -r requirements.txt
 
-# Download the dataset from HuggingFace (~2GB compressed → 19GB local DB)
+# Download the dataset from HuggingFace (→ ~32GB local DB)
 python scripts/download_data.py
 
 # Start the server
@@ -61,14 +61,15 @@ python scripts/download_data.py --since 2026-06-01
 
 | Table | Rows | Description |
 |---|---|---|
-| `samples` | 36M | Time-series from all signal sources (solar wind, IMF, Kp, Dst, tidal, X-ray, etc.) |
+| `samples` | 54M | Time-series from all signal sources (solar wind, IMF, Kp, Dst, tidal, X-ray, etc.) |
+| `station_metrics` | 41M | Per-station seismic amplitude, STA/LTA ratio, trigger state (53 stations) |
 | `dart_readings` | 11.4M | DART buoy seafloor pressure measurements |
-| `station_metrics` | 6.9M | Per-station seismic amplitude, STA/LTA ratio, trigger state |
-| `earthquakes` | 327K | USGS + EMSC earthquake catalog |
-| `thermal_anomalies` | 601K | FIRMS thermal hotspots near volcanoes |
-| `dart_stations` | 40+ | DART buoy metadata (position, depth, region) |
-| `volcanoes` | 1,400+ | Smithsonian volcano registry |
-| `eruptions` | 600+ | Historical eruption records |
+| `earthquakes` | 640K | USGS + EMSC catalog, de-duplicated across agencies (2015–present, ~20K at M5+) |
+| `thermal_anomalies` | 622K | FIRMS thermal hotspots near volcanoes |
+| `gps_strain` (gps.db) | 168K | GPS crustal-deformation strain residuals |
+| `eruptions` | 2,224 | Historical eruption records |
+| `volcanoes` | 1,215 | Smithsonian volcano registry |
+| `dart_stations` | 47 | DART buoy metadata (position, depth, region) |
 
 ## Dashboard
 
@@ -113,7 +114,7 @@ The `lab/` directory contains reproducible experiments. These are exploratory, I
 - **`dart_case_study.py`**, DART buoy pressure precursor analysis (Venezuela M7.5 case study).
 - **`train_stgnn.py`**, Spatio-Temporal Graph Neural Network for multi-zone prediction.
 - **`train_zone_test.py`**, Zone-focused training with full feature set (seismic + solar + tidal + DART).
-- **`deep_backfill.py`**, 5-year seismic waveform backfill from FDSN/IRIS.
+- **`deep_backfill.py`**, 11-year (2015–present) seismic waveform backfill from FDSN/IRIS, across 53 stations (Alaska, Chile, Taiwan, Kamchatka, NZ, Caribbean + the GSN backbone).
 - **`train_ensemble.py`**, the multi-signal feature pipeline + LightGBM trainer (occurrence and tier-2 escalation objectives) across 13 zones.
 - **`declustering_experiment.py`**, Gardner-Knopoff declustering test that showed the original occurrence model was largely scoring aftershocks, the finding that motivated the swarm-escalation reframe.
 - **`tier2_escalation.py`**, the swarm-escalation discrimination experiment (catalog-only vs multi-signal, confirming the non-seismic signals add real skill).
