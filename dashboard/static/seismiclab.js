@@ -364,6 +364,7 @@ map.on('load', () => {
     refreshFaultRisk();
     refreshHeatmap();
     if (_swarmWatchData) updateSwarmPolygons(_swarmWatchData);
+    if (_latestThreats) updateZoneBoundaries(_latestThreats);
 });
 
 // ── Region name guesser ──────────────────────────────────
@@ -503,6 +504,79 @@ function updateThreatMonitor(zones) {
             );
         });
     });
+}
+
+function updateZoneBoundaries(zones) {
+    _latestThreats = zones;
+    if (!mapReady || !zones) return;
+
+    const features = zones
+        .filter(z => z.level !== 'NORMAL' && ZONE_BOUNDARIES[z.zone_id])
+        .map(z => ({
+            type: 'Feature',
+            properties: {
+                zone_id: z.zone_id,
+                name: z.name,
+                level: z.level,
+                threat_score: z.threat_score || 0,
+            },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [ZONE_BOUNDARIES[z.zone_id]],
+            }
+        }));
+
+    const geo = { type: 'FeatureCollection', features };
+    if (map.getSource('zone-boundaries')) {
+        map.getSource('zone-boundaries').setData(geo);
+    } else {
+        map.addSource('zone-boundaries', { type: 'geojson', data: geo });
+        map.addLayer({
+            id: 'zone-boundaries-fill',
+            type: 'fill',
+            source: 'zone-boundaries',
+            paint: {
+                'fill-color': [
+                    'match', ['get', 'level'],
+                    'ALERT', 'rgba(220,70,50,0.10)',
+                    'ELEVATED', 'rgba(230,160,50,0.08)',
+                    'WATCH', 'rgba(255,255,255,0.04)',
+                    'rgba(0,0,0,0)'
+                ],
+                'fill-opacity': 1,
+            }
+        });
+
+        map.on('mouseenter', 'zone-boundaries-fill', (e) => {
+            map.getCanvas().style.cursor = 'pointer';
+            const p = e.features[0].properties;
+            const colors = ZONE_LEVEL_COLORS[p.level] || ZONE_LEVEL_COLORS.WATCH;
+            const html = `<div style="font-size:11px"><b>${p.name}</b> · <span style="color:${colors.label};font-weight:600">${p.level}</span></div>`;
+            hoverPopup.setHTML(html).setLngLat(e.lngLat).addTo(map);
+        });
+        map.on('mouseleave', 'zone-boundaries-fill', () => {
+            map.getCanvas().style.cursor = '';
+            hoverPopup.remove();
+        });
+        map.on('click', 'zone-boundaries-fill', (e) => {
+            const target = e.originalEvent?.target;
+            if (target && target !== map.getCanvas() && !target.classList.contains('maplibregl-canvas')) return;
+            const interactiveLayers = ['swarm-cells-fill', 'swarm-zone-quakes-dot', 'eq-circles', 'eq-circles-outer'].filter(l => map.getLayer(l));
+            if (interactiveLayers.length > 0) {
+                const hits = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
+                if (hits.length > 0) return;
+            }
+            const p = e.features[0].properties;
+            const center = ZONE_BOUNDARIES[p.zone_id];
+            if (center) {
+                const lats = center.map(c => c[1]);
+                const lons = center.map(c => c[0]);
+                const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+                const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+                predictLocation(cLat, cLon, p.name);
+            }
+        });
+    }
 }
 
 function updateDartSummary(data) {
@@ -701,12 +775,33 @@ const SW_ZONE_LABELS = {
 };
 
 const SW_ALERT_COLORS = {
-    WARNING: 'rgba(220,70,50,0.95)',
     WATCH: 'rgba(230,160,50,0.95)',
     ADVISORY: 'rgba(220,200,60,0.9)',
     NORMAL: 'rgba(160,160,160,0.6)',
 };
 
+const ZONE_BOUNDARIES = {
+    alaska: [[-172,50],[-140,50],[-140,62],[-155,65],[-172,62],[-172,50]],
+    philippines: [[117,5],[128,5],[128,25],[117,25],[117,5]],
+    himalaya: [[70,25],[95,25],[95,38],[70,38],[70,25]],
+    chile_peru: [[-80,-45],[-65,-45],[-65,-5],[-80,-5],[-80,-45]],
+    indonesia: [[95,-12],[140,-12],[140,6],[95,6],[95,-12]],
+    japan: [[128,28],[148,28],[148,46],[128,46],[128,28]],
+    caribbean: [[-85,10],[-58,10],[-58,22],[-85,22],[-85,10]],
+    mediterranean: [[0,32],[42,32],[42,44],[0,44],[0,32]],
+    mexico_ca: [[-110,8],[-82,8],[-82,22],[-110,22],[-110,8]],
+    norcal: [[-130,38],[-118,38],[-118,50],[-130,50],[-130,38]],
+    socal: [[-122,31],[-114,31],[-114,37],[-122,37],[-122,31]],
+    iceland: [[-26,62],[-12,62],[-12,67],[-26,67],[-26,62]],
+};
+
+const ZONE_LEVEL_COLORS = {
+    ALERT: { fill: 'rgba(220,70,50,0.10)', label: 'rgba(220,70,50,0.9)' },
+    ELEVATED: { fill: 'rgba(230,160,50,0.08)', label: 'rgba(230,160,50,0.9)' },
+    WATCH: { fill: 'rgba(255,255,255,0.04)', label: 'rgba(255,255,255,0.6)' },
+};
+
+let _latestThreats = null;
 let _swarmWatchData = null;
 
 function updateSwarmWatch(data) {
@@ -715,53 +810,55 @@ function updateSwarmWatch(data) {
     if (!el) return;
 
     const watch = data.watch || [];
-    const elevated = watch.filter(w => w.alert_level !== 'NORMAL');
-    const normalCount = watch.filter(w => w.alert_level === 'NORMAL').length;
-
-    if (elevated.length === 0) {
-        let html = '<div class="panel-muted">No swarms currently building</div>';
-        if (normalCount > 0) {
-            html += `<div class="sw-baseline-count">${normalCount} active swarms at baseline risk</div>`;
-        }
-        if (data.generated) {
-            const gen = new Date(data.generated.replace(' ', 'T'));
-            const timeStr = gen.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-            html += `<div class="sw-footer">${data.n_active_swarms || 0} swarms · ${timeStr} UTC</div>`;
-        }
-        el.innerHTML = html;
-        updateSwarmPolygons(data);
-        return;
-    }
-
-    const zoneGroups = {};
-    for (const w of elevated) {
-        if (!zoneGroups[w.zone]) zoneGroups[w.zone] = [];
-        zoneGroups[w.zone].push(w);
-    }
-
-    const sortedZones = Object.entries(zoneGroups)
-        .sort((a, b) => Math.max(...b[1].map(w => w.escalation_prob_72h)) - Math.max(...a[1].map(w => w.escalation_prob_72h)));
+    const elevated = watch.filter(w => w.alert_level !== 'NORMAL' && w.model_skill === 'validated');
+    const experimental = watch.filter(w => w.model_skill === 'experimental' && w.n_recent_quakes > 0);
+    const normalCount = watch.filter(w => w.alert_level === 'NORMAL' && w.model_skill === 'validated').length;
 
     let html = '';
-    for (const [zone, cells] of sortedZones) {
-        const maxCell = cells.reduce((a, b) => a.escalation_prob_72h > b.escalation_prob_72h ? a : b);
-        const pct = (maxCell.escalation_prob_72h * 100).toFixed(1);
-        const lift = maxCell.lift_vs_base.toFixed(1);
-        const alertClass = maxCell.alert_level.toLowerCase();
-        const label = SW_ZONE_LABELS[zone] || zone;
-        const totalInZone = watch.filter(w => w.zone === zone).length;
 
-        html += `<div class="sw-row" data-zone="${zone}">
-            <div class="sw-header">
-                <span class="sw-zone">${label}</span>
-                <span class="sw-alert sw-alert-${alertClass}">${maxCell.alert_level}</span>
-            </div>
-            <div class="sw-detail">${pct}% M5+ in 72h · ${lift}× baseline${totalInZone > 1 ? ` · ${totalInZone} swarms` : ''}</div>
-        </div>`;
-    }
+    if (elevated.length === 0 && experimental.length === 0) {
+        html = '<div class="panel-muted">Nothing building — no elevated swarms</div>';
+        if (normalCount > 0) {
+            html += `<div class="sw-baseline-count">${normalCount} validated swarms at baseline</div>`;
+        }
+    } else {
+        const sortedElevated = [...elevated].sort((a, b) => b.escalation_prob_72h - a.escalation_prob_72h);
+        for (const w of sortedElevated) {
+            const pct = (w.escalation_prob_72h * 100).toFixed(1);
+            const alertClass = w.alert_level.toLowerCase();
+            const label = SW_ZONE_LABELS[w.zone] || w.zone;
+            const nq = w.n_recent_quakes || 0;
+            const dir = w.direction === 'RISING' ? ' ↑' : w.direction === 'FALLING' ? ' ↓' : '';
 
-    if (normalCount > 0) {
-        html += `<div class="sw-baseline-count">${normalCount} more at baseline risk</div>`;
+            html += `<div class="sw-row" data-cell="${w.cell}">
+                <div class="sw-header">
+                    <span class="sw-zone">${label}</span>
+                    <span class="sw-alert sw-alert-${alertClass}">${w.alert_level}</span>
+                </div>
+                <div class="sw-detail">${pct}% escalation in 72h${dir} · ${nq} quakes</div>
+            </div>`;
+        }
+
+        if (experimental.length > 0) {
+            const topExp = [...experimental].sort((a, b) => b.n_recent_quakes - a.n_recent_quakes).slice(0, 5);
+            html += `<div class="sw-baseline-count">${experimental.length} observed swarms (experimental zones)</div>`;
+            for (const w of topExp) {
+                const label = SW_ZONE_LABELS[w.zone] || w.zone;
+                const nq = w.n_recent_quakes || 0;
+                const dir = w.direction === 'RISING' ? ' ↑' : w.direction === 'FALLING' ? ' ↓' : '';
+                html += `<div class="sw-row sw-row-experimental" data-cell="${w.cell}">
+                    <div class="sw-header">
+                        <span class="sw-zone">${label}</span>
+                        <span class="sw-alert sw-alert-normal">OBSERVED</span>
+                    </div>
+                    <div class="sw-detail">${nq} quakes${dir} · activity detected</div>
+                </div>`;
+            }
+        }
+
+        if (normalCount > 0) {
+            html += `<div class="sw-baseline-count">${normalCount} more at baseline</div>`;
+        }
     }
 
     if (data.generated) {
@@ -772,8 +869,8 @@ function updateSwarmWatch(data) {
 
     el.innerHTML = html;
 
-    el.querySelectorAll('.sw-row[data-zone]').forEach(row => {
-        row.addEventListener('click', () => openSwarmDetail(row.dataset.zone));
+    el.querySelectorAll('.sw-row[data-cell]').forEach(row => {
+        row.addEventListener('click', () => openSwarmDetail(row.dataset.cell));
     });
 
     updateSwarmPolygons(data);
@@ -1737,7 +1834,7 @@ function renderMarkdown(md) {
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/\*\*(.+?)\*\*/g, (_, t) => {
             if (/CRITICAL|IMMEDIATE/i.test(t)) return '<strong class="alert-text">' + t + '</strong>';
-            if (/ELEVATED|HIGH|WARNING/i.test(t)) return '<strong class="elevated-text">' + t + '</strong>';
+            if (/ELEVATED|HIGH/i.test(t)) return '<strong class="elevated-text">' + t + '</strong>';
             return '<strong>' + t + '</strong>';
         })
         .replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -2981,18 +3078,22 @@ async function refreshHeatmap() {
 }
 
 // ── Swarm Watch Detail Overlay ──────────────────────────
-function openSwarmDetail(zone) {
+function openSwarmDetail(cellId) {
     if (!_swarmWatchData) return;
     const overlay = document.getElementById('fc-overlay');
     overlay.classList.add('open');
 
-    const cells = _swarmWatchData.watch.filter(w => w.zone === zone);
-    if (cells.length === 0) {
-        document.getElementById('fc-content').innerHTML = '<div class="fc-loading">No data for this zone</div>';
+    const cell = _swarmWatchData.watch.find(w => w.cell === cellId);
+    if (!cell) {
+        document.getElementById('fc-content').innerHTML = '<div class="fc-loading">No data for this swarm</div>';
         return;
     }
 
-    renderSwarmDetail(zone, cells, _swarmWatchData);
+    const quakes = (cell.quakes || []).map(q => ({
+        ...q, magnitude: q.mag, timestamp: new Date(q.time).getTime()
+    })).sort((a, b) => b.timestamp - a.timestamp);
+
+    renderSwarmDetail(cell, _swarmWatchData, quakes);
 }
 
 function closeSwarmDetail() {
@@ -3010,41 +3111,76 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-function renderSwarmDetail(zone, cells, data) {
+function renderSwarmDetail(cell, data, zoneQuakes) {
     const content = document.getElementById('fc-content');
-    const label = SW_ZONE_LABELS[zone] || zone;
-    const maxCell = cells.reduce((a, b) => a.escalation_prob_72h > b.escalation_prob_72h ? a : b);
-    const pct = (maxCell.escalation_prob_72h * 100).toFixed(1);
-    const alertClass = maxCell.alert_level.toLowerCase();
+    const label = SW_ZONE_LABELS[cell.zone] || cell.zone;
+    const isExperimental = cell.model_skill === 'experimental';
+    const pct = (cell.escalation_prob_72h * 100).toFixed(1);
+    const effectiveLevel = isExperimental ? 'OBSERVED' : cell.alert_level;
+    const alertClass = isExperimental ? 'normal' : cell.alert_level.toLowerCase();
     const baseRate = (data.base_rate_72h * 100).toFixed(1);
-    const gaugeColor = SW_ALERT_COLORS[maxCell.alert_level] || 'rgba(255,255,255,0.7)';
+    const gaugeColor = isExperimental ? 'rgba(160,160,160,0.5)' : (SW_ALERT_COLORS[cell.alert_level] || 'rgba(255,255,255,0.7)');
 
     const circumference = 2 * Math.PI * 52;
-    const offset = circumference * (1 - maxCell.escalation_prob_72h);
+    const offset = circumference * (1 - (isExperimental ? 0 : cell.escalation_prob_72h));
 
-    const allZoneCells = data.watch.filter(w => w.zone === zone);
-    const sortedCells = [...allZoneCells].sort((a, b) => b.escalation_prob_72h - a.escalation_prob_72h);
+    const latC = cell.centroid[0];
+    const lonC = cell.centroid[1];
+    const locStr = `${Math.abs(latC).toFixed(1)}°${latC >= 0 ? 'N' : 'S'}, ${Math.abs(lonC).toFixed(1)}°${lonC >= 0 ? 'E' : 'W'}`;
+    const dirLabel = cell.direction === 'RISING' ? '↑ Rising' : cell.direction === 'FALLING' ? '↓ Falling' : '→ Steady';
+    const volcHtml = cell.nearby_volcanic_alert
+        ? `<div class="sw-seis-stat"><span class="sw-seis-num" style="color:rgba(220,70,50,0.9)">${cell.nearby_volcanic_alert.volcano}</span><span class="sw-seis-label">${cell.nearby_volcanic_alert.level} volcanic alert</span></div>`
+        : '';
 
-    let cellsHtml = '';
-    for (const c of sortedCells) {
-        const cPct = (c.escalation_prob_72h * 100).toFixed(1);
-        const cLift = c.lift_vs_base.toFixed(1);
-        const cAlert = c.alert_level.toLowerCase();
-        const latC = c.centroid ? c.centroid[0] : (c.lat_range[0] + c.lat_range[1]) / 2;
-        const lonC = c.centroid ? c.centroid[1] : (c.lon_range[0] + c.lon_range[1]) / 2;
-        const locStr = `${Math.abs(latC).toFixed(0)}°${latC >= 0 ? 'N' : 'S'}, ${Math.abs(lonC).toFixed(0)}°${lonC >= 0 ? 'E' : 'W'}`;
+    const totalModelQuakes = cell.n_recent_quakes || 0;
+    if (!zoneQuakes) zoneQuakes = [];
 
-        cellsHtml += `<div class="sw-cell-row">
-            <span class="sw-cell-alert sw-alert sw-alert-${cAlert}">${c.alert_level}</span>
-            <span class="sw-cell-loc">${locStr}</span>
-            <span class="sw-cell-prob">${cPct}%</span>
-            <span class="sw-cell-lift">${cLift}×</span>
+    const magBuckets = { '2-3': 0, '3-4': 0, '4-5': 0, '5+': 0 };
+    for (const eq of zoneQuakes) {
+        if (eq.magnitude >= 5) magBuckets['5+']++;
+        else if (eq.magnitude >= 4) magBuckets['4-5']++;
+        else if (eq.magnitude >= 3) magBuckets['3-4']++;
+        else magBuckets['2-3']++;
+    }
+    const maxBucket = Math.max(1, ...Object.values(magBuckets));
+    const magBarColors = { '2-3': 'rgba(255,255,255,0.5)', '3-4': 'rgba(255,255,255,0.5)', '4-5': 'rgba(255,255,255,0.5)', '5+': 'rgba(220,70,50,0.9)' };
+    let magBarsHtml = '';
+    for (const [range, count] of Object.entries(magBuckets)) {
+        const pctW = Math.max(2, (count / maxBucket) * 100);
+        magBarsHtml += `<div class="sw-mag-row">
+            <span class="sw-mag-label">M${range}</span>
+            <div class="sw-mag-bar-track"><div class="sw-mag-bar-fill" style="width:${pctW}%;background:${magBarColors[range]}"></div></div>
+            <span class="sw-mag-count">${count}</span>
         </div>`;
     }
 
+    // Timeline data for seismograph canvas (last 48h)
+    const _tlQuakes = [...zoneQuakes].sort((a, b) => a.timestamp - b.timestamp);
+    const _tlDataAttr = JSON.stringify(_tlQuakes.map(q => [q.timestamp, q.magnitude]));
+
+    let recentListHtml = '';
+    const showQuakes = zoneQuakes;
+    for (const eq of showQuakes) {
+        const mc = magColor(eq.magnitude);
+        const place = (eq.place || 'Unknown').replace(/^.+? of /, '');
+        const depth = eq.depth_km ? `${eq.depth_km.toFixed(0)}km` : '';
+        recentListHtml += `<div class="sw-quake-item">
+            <span class="sw-quake-mag" style="color:${mc}">M${eq.magnitude.toFixed(1)}</span>
+            <span class="sw-quake-place">${place}</span>
+            <span class="sw-quake-meta">${depth}${depth ? ' · ' : ''}${timeAgo(eq.timestamp)}</span>
+        </div>`;
+    }
+
+    const heroQuestion = isExperimental
+        ? 'Swarm activity observed — experimental zone'
+        : `Active swarm — ${pct}% escalation risk (72h)`;
+    const heroDesc = isExperimental
+        ? 'This zone has not been validated for forecasting. Showing observed activity only.'
+        : 'Calibrated probability of M5+ mainshock within 72 hours';
+
     content.innerHTML = `
         <div class="fc-hero">
-            <div class="fc-gauge">
+            ${isExperimental ? '' : `<div class="fc-gauge">
                 <svg viewBox="0 0 120 120">
                     <circle class="fc-gauge-track" cx="60" cy="60" r="52"/>
                     <circle class="fc-gauge-fill" cx="60" cy="60" r="52"
@@ -3055,36 +3191,68 @@ function renderSwarmDetail(zone, cells, data) {
                 <div class="fc-gauge-pct">
                     ${pct}<span class="fc-gauge-label">%</span>
                 </div>
-            </div>
+            </div>`}
             <div class="fc-hero-info">
                 <div class="fc-hero-zone">${label}</div>
-                <div class="sw-hero-question">Active swarm detected — escalation risk</div>
-                <div class="sw-hero-desc">Calibrated probability of M5+ mainshock within 72 hours</div>
-                <span class="sw-hero-alert sw-alert sw-alert-${alertClass}">${maxCell.alert_level}</span>
-                <div class="sw-hero-lift">${maxCell.lift_vs_base.toFixed(1)}× baseline (baseline: ${baseRate}%)</div>
+                <div class="sw-hero-question">${heroQuestion}</div>
+                <div class="sw-hero-desc">${heroDesc}</div>
+                <span class="sw-hero-alert sw-alert sw-alert-${alertClass}">${effectiveLevel}</span>
+                ${isExperimental
+                    ? `<div class="sw-hero-lift">${locStr} · ${dirLabel}</div>`
+                    : `<div class="sw-hero-lift">${cell.lift_vs_base.toFixed(1)}× baseline (baseline: ${baseRate}%) · ${locStr} · ${dirLabel}</div>`
+                }
             </div>
         </div>
 
         <div class="fc-grid">
             <div class="fc-main">
                 <div class="fc-section">
-                    <div class="fc-section-title">Active Swarm Cells (${allZoneCells.length})</div>
-                    <div class="sw-cells-list">${cellsHtml}</div>
+                    <div class="fc-section-title">Seismicity Overview</div>
+                    <div class="sw-seismicity-summary">
+                        <div class="sw-seis-stat">
+                            <span class="sw-seis-num">${totalModelQuakes}</span>
+                            <span class="sw-seis-label">quakes in swarm</span>
+                        </div>
+                        <div class="sw-seis-stat">
+                            <span class="sw-seis-num">${dirLabel}</span>
+                            <span class="sw-seis-label">trend</span>
+                        </div>
+                        ${volcHtml}
+                    </div>
                 </div>
 
                 <div class="fc-section">
-                    <div class="fc-section-title">What This Means</div>
-                    <div class="sw-context">
-                        <div class="sw-context-item">~94% of active swarms fizzle without producing a large event</div>
-                        <div class="sw-context-item">This model identifies the ~6% that escalate to M5+ mainshocks</div>
-                        <div class="sw-context-item">Probabilities are calibrated — ${pct}% means approximately ${pct}% actually escalate</div>
-                        <div class="sw-context-item">${maxCell.alert_level} is a heightened watch posture, not a certainty</div>
+                    <div class="fc-section-title">Magnitude Distribution</div>
+                    <div class="sw-mag-chart">${magBarsHtml}</div>
+                </div>
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Timeline (48h)</div>
+                    <div class="sw-timeline-chart">
+                        <canvas id="sw-tl-canvas" data-quakes='${_tlDataAttr}' style="width:100%;height:48px"></canvas>
+                        <div class="sw-tl-axis">
+                            <span>48h ago</span><span>24h ago</span><span>now</span>
+                        </div>
                     </div>
+                </div>
+
+                ${recentListHtml ? `<div class="fc-section">
+                    <div class="fc-section-title">Recent Quakes in Zone</div>
+                    <div class="sw-quake-list">${recentListHtml}</div>
+                </div>` : ''}
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Swarm Location</div>
+                    <div class="sw-cells-list"><div class="sw-cell-row">
+                        <span class="sw-cell-loc">${locStr}</span>
+                        ${isExperimental ? '' : `<span class="sw-cell-prob">${pct}%</span>
+                        <span class="sw-cell-lift">${cell.lift_vs_base.toFixed(1)}×</span>`}
+                    </div></div>
                 </div>
             </div>
 
             <div class="fc-side">
-                <div class="fc-section">
+                ${isExperimental ? '' : `<div class="fc-section">
                     <div class="fc-section-title">Calibration Context</div>
                     <div class="sw-calibration">
                         <div class="sw-cal-row">
@@ -3097,17 +3265,32 @@ function renderSwarmDetail(zone, cells, data) {
                         </div>
                         <div class="sw-cal-row">
                             <span class="sw-cal-label">Lift vs baseline</span>
-                            <span class="sw-cal-val">${maxCell.lift_vs_base.toFixed(1)}×</span>
+                            <span class="sw-cal-val">${cell.lift_vs_base.toFixed(1)}×</span>
                         </div>
+                    </div>
+                </div>`}
+
+                <div class="fc-section">
+                    <div class="fc-section-title">What This Means</div>
+                    <div class="sw-context">
+                        ${isExperimental ? `
+                        <div class="sw-context-item">This zone is experimental — the model has not been validated here</div>
+                        <div class="sw-context-item">Showing observed swarm activity, not a forecast</div>
+                        <div class="sw-context-item">Validated zones: Alaska, South America, New Zealand, Japan/Kurils</div>
+                        ` : `
+                        <div class="sw-context-item">~94% of active swarms fizzle without producing a large event</div>
+                        <div class="sw-context-item">This model identifies the ~6% that escalate to M5+ mainshocks</div>
+                        <div class="sw-context-item">Probabilities are calibrated — ${pct}% means approximately ${pct}% actually escalate</div>
+                        <div class="sw-context-item">${effectiveLevel} is a watch posture, not a prediction</div>
+                        `}
                     </div>
                 </div>
 
                 <div class="fc-section">
                     <div class="fc-section-title">Alert Levels</div>
                     <div class="sw-alert-legend">
-                        <div class="sw-legend-row"><span class="sw-alert sw-alert-warning">WARNING</span><span>≥30% — act on this</span></div>
-                        <div class="sw-legend-row"><span class="sw-alert sw-alert-watch">WATCH</span><span>Top 5% — notably elevated</span></div>
-                        <div class="sw-legend-row"><span class="sw-alert sw-alert-advisory">ADVISORY</span><span>Top 20% — worth watching</span></div>
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-watch">WATCH</span><span>Notably elevated — top 5%</span></div>
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-advisory">ADVISORY</span><span>Worth watching — top 20%</span></div>
                         <div class="sw-legend-row"><span class="sw-alert sw-alert-normal">NORMAL</span><span>Baseline risk</span></div>
                     </div>
                 </div>
@@ -3122,8 +3305,72 @@ function renderSwarmDetail(zone, cells, data) {
         const fill = content.querySelector('.fc-gauge-fill');
         if (fill) fill.style.strokeDashoffset = offset;
 
-        const avgLat = allZoneCells.reduce((s, c) => s + (c.centroid ? c.centroid[0] : (c.lat_range[0] + c.lat_range[1]) / 2), 0) / allZoneCells.length;
-        const avgLon = allZoneCells.reduce((s, c) => s + (c.centroid ? c.centroid[1] : (c.lon_range[0] + c.lon_range[1]) / 2), 0) / allZoneCells.length;
+        const tlCanvas = document.getElementById('sw-tl-canvas');
+        if (tlCanvas) {
+            const rect = tlCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const cw = rect.width, ch = rect.height;
+            tlCanvas.width = cw * dpr;
+            tlCanvas.height = ch * dpr;
+            const ctx = tlCanvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+
+            let qdata = [];
+            try { qdata = JSON.parse(tlCanvas.dataset.quakes || '[]'); } catch(e) {}
+
+            const tNow = Date.now();
+            const t48 = tNow - 48 * 60 * 60 * 1000;
+
+            // Bucket into 96 slots (30min each) for smooth line
+            const nSlots = 96;
+            const slotMs = (48 * 60 * 60 * 1000) / nSlots;
+            const slots = new Array(nSlots).fill(0);
+            for (const [ts, mag] of qdata) {
+                const si = Math.min(nSlots - 1, Math.max(0, Math.floor((ts - t48) / slotMs)));
+                slots[si] += mag;
+            }
+            const maxSlot = Math.max(1, ...slots);
+
+            // Draw baseline
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            const baseY = ch * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(0, baseY);
+            ctx.lineTo(cw, baseY);
+            ctx.stroke();
+
+            // Draw seismograph line
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let i = 0; i < nSlots; i++) {
+                const x = (i / (nSlots - 1)) * cw;
+                const amp = (slots[i] / maxSlot) * (ch * 0.45);
+                const y = baseY - amp;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Fill under the line
+            ctx.lineTo(cw, baseY);
+            ctx.lineTo(0, baseY);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,255,255,0.04)';
+            ctx.fill();
+
+            // Draw individual quake ticks
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            for (const [ts, mag] of qdata) {
+                const x = ((ts - t48) / (tNow - t48)) * cw;
+                const tickH = Math.max(2, (mag / 6) * ch * 0.4);
+                ctx.fillRect(x, baseY - tickH, 1, tickH);
+            }
+        }
+
+        const avgLat = cell.centroid[0];
+        const avgLon = cell.centroid[1];
         const nearest = findNearestStations(avgLat, avgLon, 2);
         const section = document.getElementById('fc-seismo-section');
         if (nearest.length > 0 && section) {
@@ -3139,23 +3386,25 @@ function renderSwarmDetail(zone, cells, data) {
     });
 }
 
-const _swarmMarkers = [];
+let _swarmZoneHandlers = false;
 
 function updateSwarmPolygons(data) {
     if (!mapReady) return;
 
-    // Clear old markers
-    for (const m of _swarmMarkers) m.remove();
-    _swarmMarkers.length = 0;
-
     const watch = data.watch || [];
 
-    // Extent outlines (tight cluster bbox, not the 10° scoring box)
+    // One extent per validated, non-NORMAL cell
     const extentFeatures = watch
-        .filter(w => w.extent && w.alert_level !== 'NORMAL')
+        .filter(w => w.extent && w.alert_level !== 'NORMAL' && w.model_skill === 'validated')
         .map(w => ({
             type: 'Feature',
-            properties: { alert_level: w.alert_level },
+            properties: {
+                alert_level: w.alert_level,
+                cell: w.cell,
+                zone: w.zone,
+                zone_label: SW_ZONE_LABELS[w.zone] || w.zone,
+                n_quakes: w.n_recent_quakes || 0,
+            },
             geometry: {
                 type: 'Polygon',
                 coordinates: [[
@@ -3180,7 +3429,6 @@ function updateSwarmPolygons(data) {
             paint: {
                 'fill-color': [
                     'match', ['get', 'alert_level'],
-                    'WARNING', 'rgba(220,70,50,0.12)',
                     'WATCH', 'rgba(230,160,50,0.10)',
                     'ADVISORY', 'rgba(220,200,60,0.08)',
                     'rgba(160,160,160,0.03)'
@@ -3195,7 +3443,6 @@ function updateSwarmPolygons(data) {
             paint: {
                 'line-color': [
                     'match', ['get', 'alert_level'],
-                    'WARNING', 'rgba(220,70,50,0.5)',
                     'WATCH', 'rgba(230,160,50,0.4)',
                     'ADVISORY', 'rgba(220,200,60,0.3)',
                     'rgba(160,160,160,0.1)'
@@ -3204,37 +3451,74 @@ function updateSwarmPolygons(data) {
                 'line-dasharray': [3, 2],
             }
         });
+
+        map.on('mouseenter', 'swarm-cells-fill', (e) => {
+            map.getCanvas().style.cursor = 'pointer';
+            const p = e.features[0].properties;
+            const color = SW_ALERT_COLORS[p.alert_level] || 'rgba(160,160,160,0.6)';
+            const html = `<div style="font-size:11px"><b>${p.zone_label}</b> · <span style="color:${color};font-weight:600">${p.alert_level}</span> · ${p.n_quakes} quakes</div>`;
+            hoverPopup.setHTML(html).setLngLat(e.lngLat).addTo(map);
+        });
+        map.on('mouseleave', 'swarm-cells-fill', () => {
+            map.getCanvas().style.cursor = '';
+            hoverPopup.remove();
+        });
+        map.on('click', 'swarm-cells-fill', (e) => {
+            openSwarmDetail(e.features[0].properties.cell);
+        });
+        _swarmZoneHandlers = true;
     }
 
-    // Centroid markers
+    // Render quakes from embedded quakes[] arrays on the map
+    _renderSwarmQuakes(watch);
+}
+
+function _renderSwarmQuakes(watch) {
+    const features = [];
     for (const w of watch) {
-        const c = w.centroid;
-        if (!c) continue;
-        const alertClass = w.alert_level.toLowerCase();
-        const pct = (w.escalation_prob_72h * 100).toFixed(1);
-        const zone = SW_ZONE_LABELS[w.zone] || w.zone;
-        const color = SW_ALERT_COLORS[w.alert_level] || 'rgba(160,160,160,0.6)';
-        const isElevated = w.alert_level !== 'NORMAL';
-
-        const size = isElevated ? 10 : 6;
-        const el = document.createElement('div');
-        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,${isElevated ? 0.4 : 0.1});cursor:pointer;transition:transform 0.15s;`;
-        if (isElevated) el.style.boxShadow = `0 0 6px ${color}`;
-
-        const marker = new maplibregl.Marker({ element: el })
-            .setLngLat([c[1], c[0]])
-            .addTo(map);
-
-        const lift = w.lift_vs_base.toFixed(1);
-        const tipHtml = `<div style="font-size:11px"><b>${zone}</b><br><span style="color:${color};font-weight:600">${w.alert_level}</span> · ${pct}% M5+ in 72h · ${lift}× baseline</div>`;
-        setTooltip(marker, tipHtml);
-
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openSwarmDetail(w.zone);
+        if (!w.quakes || !w.quakes.length || w.alert_level === 'NORMAL' || w.model_skill === 'experimental') continue;
+        for (const eq of w.quakes) {
+            const mag = eq.mag || 0;
+            let color, radius;
+            if (mag >= 5) { color = 'rgba(220,70,50,0.9)'; radius = 6; }
+            else { color = 'rgba(255,255,255,0.5)'; radius = Math.max(2, mag); }
+            features.push({
+                type: 'Feature',
+                properties: { mag, color, radius, cell: w.cell,
+                    place: eq.place || '', depth: eq.depth_km || 0, time: eq.time || '' },
+                geometry: { type: 'Point', coordinates: [eq.lon, eq.lat] }
+            });
+        }
+    }
+    const geo = { type: 'FeatureCollection', features };
+    if (map.getSource('swarm-zone-quakes')) {
+        map.getSource('swarm-zone-quakes').setData(geo);
+    } else {
+        map.addSource('swarm-zone-quakes', { type: 'geojson', data: geo });
+        map.addLayer({
+            id: 'swarm-zone-quakes-dot',
+            type: 'circle',
+            source: 'swarm-zone-quakes',
+            paint: {
+                'circle-radius': ['get', 'radius'],
+                'circle-color': ['get', 'color'],
+                'circle-stroke-width': 0.5,
+                'circle-stroke-color': 'rgba(255,255,255,0.15)',
+            }
         });
-
-        _swarmMarkers.push(marker);
+        map.on('mouseenter', 'swarm-zone-quakes-dot', (e) => {
+            map.getCanvas().style.cursor = 'pointer';
+            const p = e.features[0].properties;
+            const place = (p.place || '').replace(/^.+? of /, '');
+            const depth = p.depth ? `${Math.round(p.depth)}km` : '';
+            const ago = p.time ? timeAgo(new Date(p.time).getTime()) : '';
+            hoverPopup.setHTML(`<div style="font-size:11px"><b>M${p.mag.toFixed(1)}</b> ${place}<br>${depth}${depth && ago ? ' · ' : ''}${ago}</div>`)
+                .setLngLat(e.lngLat).addTo(map);
+        });
+        map.on('mouseleave', 'swarm-zone-quakes-dot', () => {
+            map.getCanvas().style.cursor = '';
+            hoverPopup.remove();
+        });
     }
 }
 
@@ -3260,6 +3544,7 @@ function connectStream() {
         try {
             const threats = JSON.parse(e.data);
             updateThreatMonitor(threats);
+            updateZoneBoundaries(threats);
         } catch (err) { console.error('Threat parse:', err); }
     });
 
@@ -3485,7 +3770,7 @@ async function init() {
     // Fire all initial data loads in parallel
     Promise.all([
         loadSignalHistory(),
-        fetch('/api/threats').then(r => r.ok ? r.json() : null).then(d => d && updateThreatMonitor(d)).catch(() => {}),
+        fetch('/api/threats').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateThreatMonitor(d); updateZoneBoundaries(d); } }).catch(() => {}),
         fetch('/api/seismicity/summary').then(r => r.ok ? r.json() : null).then(d => d && updateSeismicitySummary(d)).catch(() => {}),
         fetch('/api/dart/status').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateDartMarkers(d); updateDartSummary(d); } }).catch(() => {}),
         fetch('/api/tidal/sensitivity').then(r => r.ok ? r.json() : null).then(d => d && updateTidalRipples(d)).catch(() => {}),

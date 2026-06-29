@@ -1102,7 +1102,6 @@ html, body {
     flex-shrink: 0;
     padding: 2px 6px;
 }
-.sw-alert-warning  { color: rgba(220,70,50,0.95); border: 1px solid rgba(220,70,50,0.25); }
 .sw-alert-watch    { color: rgba(230,160,50,0.95); border: 1px solid rgba(230,160,50,0.2); }
 .sw-alert-advisory { color: rgba(220,200,60,0.9); border: 1px solid rgba(220,200,60,0.15); }
 .sw-alert-normal   { color: rgba(160,160,160,0.6); border: 1px solid rgba(160,160,160,0.1); }
@@ -2455,6 +2454,118 @@ html, body {
     color: rgba(255,255,255,0.45);
 }
 .sw-legend-row .sw-alert { min-width: 70px; text-align: center; }
+
+/* Seismicity overview in swarm detail */
+.sw-seismicity-summary {
+    display: flex;
+    gap: 16px;
+    padding: 6px 0;
+}
+.sw-seis-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.sw-seis-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+}
+.sw-seis-label {
+    font-size: 9px;
+    color: rgba(255,255,255,0.45);
+}
+.sw-mag-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 0;
+}
+.sw-mag-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.sw-mag-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: rgba(255,255,255,0.5);
+    width: 30px;
+    flex-shrink: 0;
+}
+.sw-mag-bar-track {
+    flex: 1;
+    height: 3px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 0;
+}
+.sw-mag-bar-fill {
+    height: 100%;
+    border-radius: 0;
+    transition: width 0.4s ease;
+}
+.sw-mag-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: rgba(255,255,255,0.55);
+    width: 20px;
+    text-align: right;
+}
+.sw-timeline-chart {
+    padding: 4px 0;
+}
+.sw-tl-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 32px;
+}
+.sw-tl-bar {
+    flex: 1;
+    background: rgba(100,180,255,0.6);
+    border-radius: 0;
+    min-width: 0;
+}
+.sw-tl-axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    color: rgba(255,255,255,0.3);
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+}
+.sw-quake-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.sw-quake-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+}
+.sw-quake-mag {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 11px;
+    width: 36px;
+    flex-shrink: 0;
+}
+.sw-quake-place {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sw-quake-meta {
+    font-size: 9px;
+    color: rgba(255,255,255,0.35);
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+}
 
 /* Seismicity list */
 .fc-quake-list {
