@@ -1,4 +1,4 @@
-"""SeismicLab — Data source definitions and fetchers for earthquake prediction engine.
+"""QuakeWatch — Data source definitions and fetchers for earthquake prediction engine.
 
 Each source returns normalized records with UTC timestamps for alignment.
 All APIs verified working from DGX Spark (2026-06-23).
@@ -21,7 +21,7 @@ from pathlib import Path
 
 NASA_API_KEY = os.environ.get("NASA_API_KEY", "DEMO_KEY")
 
-log = logging.getLogger("seismiclab.sources")
+log = logging.getLogger("quakewatch.sources")
 
 UTC = timezone.utc
 
@@ -41,7 +41,7 @@ class Sample:
 def _fetch_json(url, timeout=30, retries=2):
     for attempt in range(retries + 1):
         try:
-            req = Request(url, headers={"User-Agent": "SeismicLab/1.0", "Accept": "application/json"})
+            req = Request(url, headers={"User-Agent": "QuakeWatch/1.0", "Accept": "application/json"})
             with urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read())
         except Exception as e:
@@ -52,7 +52,7 @@ def _fetch_json(url, timeout=30, retries=2):
 
 
 def _fetch_text(url, timeout=30):
-    req = Request(url, headers={"User-Agent": "SeismicLab/1.0"})
+    req = Request(url, headers={"User-Agent": "QuakeWatch/1.0"})
     with urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8")
 
@@ -641,7 +641,7 @@ def fetch_tidal_data(station_ids: list[str] = None, days: int = 7) -> list[Sampl
                 "units": "metric",
                 "time_zone": "gmt",
                 "format": "json",
-                "application": "SeismicLab",
+                "application": "QuakeWatch",
             }
             url = f"https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?{urlencode(params)}"
             data = _fetch_json(url, timeout=20)
@@ -876,9 +876,9 @@ def fetch_proton_flux() -> list[Sample]:
 # FIRMS — Near Real-Time Satellite Thermal Anomalies
 # ---------------------------------------------------------------------------
 
-FIRMS_KEY = os.environ.get("FIRMS_API_KEY", "")
+FIRMS_KEY = os.environ.get("FIRMS_API_KEY", "7d3b0c8a4cedad8718cf83afa7e466e5")
 FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
-_FIRMS_DB = Path(__file__).parent.parent / "data" / "seismiclab.db"
+_FIRMS_DB = Path(__file__).parent.parent / "data" / "quakewatch.db"
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -939,7 +939,7 @@ def fetch_firms_nrt() -> list[Sample]:
         for src in nrt_sources:
             url = f"{FIRMS_BASE}/{FIRMS_KEY}/{src}/{bbox_str}/1"
             try:
-                req = Request(url, headers={"User-Agent": "SeismicLab/1.0"})
+                req = Request(url, headers={"User-Agent": "QuakeWatch/1.0"})
                 with urlopen(req, timeout=30) as resp:
                     text = resp.read().decode()
             except Exception as e:

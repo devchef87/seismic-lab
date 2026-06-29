@@ -1,4 +1,4 @@
-"""SeismicLab — Spatio-Temporal Graph Neural Network Training
+"""QuakeWatch — Spatio-Temporal Graph Neural Network Training
 
 Architecture:
   1. Per-station temporal encoder (1D conv → GRU) processes 6h of 5-min features
@@ -292,7 +292,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("  SPATIO-TEMPORAL GNN — SEISMICLAB")
+    print("  SPATIO-TEMPORAL GNN — QUAKEWATCH")
     print("=" * 60)
 
     npz_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

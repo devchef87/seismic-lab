@@ -1,4 +1,4 @@
-"""SeismicLab — Historical data backfill engine.
+"""QuakeWatch — Historical data backfill engine.
 
 Pulls years of historical data from archival endpoints, chunked to respect
 rate limits and API constraints. Designed to build the training dataset
@@ -16,7 +16,7 @@ from pathlib import Path
 from .sources import Sample, _fetch_json, _fetch_text, NASA_API_KEY
 from .store import QuakeStore
 
-log = logging.getLogger("seismiclab.backfill")
+log = logging.getLogger("quakewatch.backfill")
 UTC = timezone.utc
 
 
@@ -89,6 +89,185 @@ def backfill_earthquakes(store: QuakeStore, start_year: int = 2015,
 
     log.info(f"EQ backfill complete: {total_samples:,} samples, {total_new:,} new")
     return {"source": "usgs_earthquake", "total": total_samples, "new": total_new}
+
+
+# ---------------------------------------------------------------------------
+# EMSC Earthquake Catalog — regional foreshock-band completeness
+# USGS ComCat completeness is ~M4.5 offshore (Indonesia/Chile/Japan trenches).
+# EMSC (seismicportal.eu) aggregates regional networks (BMKG, CSN, JMA, ...)
+# with Mc ~2.5-3.0, giving 30-350x more small events — the foreshock signal.
+# We pull per-zone bounding boxes, monthly, and dedup shared mainshocks against
+# the existing USGS catalog by spatiotemporal proximity.
+# ---------------------------------------------------------------------------
+
+import math
+
+EMSC_EVENT_URL = "https://www.seismicportal.eu/fdsnws/event/1/query"
+
+# Target zone bounding boxes (match PARENT_ZONES in lab/train_ensemble.py)
+EMSC_ZONES = [
+    {"id": "indonesia",     "lat": (-12, 8),  "lon": (95, 140)},
+    {"id": "japan_kurils",  "lat": (25, 50),  "lon": (128, 155)},
+    {"id": "south_america", "lat": (-60, 7),  "lon": (-82, -60)},
+    {"id": "mexico_ca",     "lat": (7, 25),   "lon": (-115, -77)},
+    {"id": "himalaya",      "lat": (25, 42),  "lon": (65, 100)},
+    {"id": "alaska",        "lat": (50, 72),  "lon": (-180, -130)},
+    {"id": "philippines",   "lat": (8, 25),   "lon": (117, 127)},
+    {"id": "mediterranean", "lat": (34, 43),  "lon": (19, 45)},
+    {"id": "caribbean",     "lat": (10, 20),  "lon": (-77, -60)},
+    {"id": "new_zealand",   "lat": (-48, -34), "lon": (165, 180)},
+    {"id": "png_solomon",   "lat": (-12, -3), "lon": (140, 160)},
+    {"id": "kamchatka",     "lat": (50, 62),  "lon": (156, 168)},
+]
+
+
+def _eq_haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _iso_to_epoch(ts):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _parse_emsc_text(text):
+    """Parse EMSC FDSN text (pipe-delimited):
+    EventID|Time|Lat|Lon|Depth|Author|Catalog|Contributor|ContributorID|MagType|Mag|MagAuthor|LocationName
+    """
+    events = []
+    for line in text.strip().split("\n"):
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|")
+        if len(parts) < 13:
+            continue
+        try:
+            eid = parts[0].strip()
+            dt = datetime.fromisoformat(parts[1].strip().replace("Z", "+00:00"))
+            ts = dt.astimezone(UTC).isoformat()
+            lat = float(parts[2]); lon = float(parts[3])
+            depth = float(parts[4]) if parts[4].strip() else None
+            mag = float(parts[10])
+            place = parts[12].strip()
+        except (ValueError, IndexError):
+            continue
+        events.append({
+            "id": f"emsc:{eid}", "timestamp": ts, "magnitude": mag,
+            "depth_km": depth, "lat": lat, "lon": lon,
+            "place": place, "type": "earthquake", "_epoch": dt.timestamp(),
+        })
+    return events
+
+
+def _load_existing_events(store, t0, t1, zlat, zlon):
+    """Existing catalog events in this bbox+window, as (epoch, lat, lon) for dedup."""
+    with store._conn() as conn:
+        rows = conn.execute("""
+            SELECT timestamp, lat, lon FROM earthquakes
+            WHERE timestamp >= ? AND timestamp < ?
+            AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+        """, (t0.isoformat(), t1.isoformat(),
+              zlat[0], zlat[1], zlon[0], zlon[1])).fetchall()
+    out = []
+    for ts, lat, lon in rows:
+        ep = _iso_to_epoch(ts)
+        if ep is not None:
+            out.append((ep, lat, lon))
+    return out
+
+
+def _is_duplicate(ev, existing, radius_km, time_s):
+    """Spatiotemporal dedup. Only M>=3.5 EMSC events can have a USGS twin
+    (USGS offshore Mc ~4.5); smaller events are EMSC-only, so skip the check."""
+    if ev["magnitude"] < 3.5:
+        return False
+    ep = ev["_epoch"]
+    for (eep, elat, elon) in existing:
+        if abs(eep - ep) <= time_s and \
+                _eq_haversine_km(ev["lat"], ev["lon"], elat, elon) <= radius_km:
+            return True
+    return False
+
+
+def backfill_earthquakes_emsc(store: QuakeStore, start_year: int = 2015,
+                              end_year: int = 2026, min_mag: float = 2.5,
+                              zones=None, dedup_radius_km: float = 50.0,
+                              dedup_time_s: float = 90.0):
+    """Backfill regional foreshock-band events from EMSC, deduped against USGS."""
+    if zones is None:
+        zones = EMSC_ZONES
+
+    total_fetched = total_new = total_dup = 0
+
+    for zone in zones:
+        zlat, zlon = zone["lat"], zone["lon"]
+        start = datetime(start_year, 1, 1, tzinfo=UTC)
+        end = datetime(end_year, 7, 1, tzinfo=UTC)
+        now = datetime.now(UTC)
+        if end > now:
+            end = now
+
+        log.info(f"EMSC zone {zone['id']} lat={zlat} lon={zlon}")
+        current = start
+        zone_new = zone_fetched = 0
+
+        while current < end:
+            chunk_end = current + timedelta(days=30)
+            if chunk_end > end:
+                chunk_end = end
+
+            params = {
+                "format": "text",
+                "starttime": current.strftime("%Y-%m-%dT%H:%M:%S"),
+                "endtime": chunk_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                "minmag": min_mag,
+                "minlat": zlat[0], "maxlat": zlat[1],
+                "minlon": zlon[0], "maxlon": zlon[1],
+                "limit": 20000,
+            }
+            url = f"{EMSC_EVENT_URL}?{urlencode(params)}"
+            try:
+                text = _fetch_text(url, timeout=90)
+            except Exception as e:
+                log.error(f"  EMSC {zone['id']} {current:%Y-%m} fetch failed: {e}")
+                current = chunk_end
+                time.sleep(1.0)
+                continue
+
+            events = _parse_emsc_text(text)
+            zone_fetched += len(events)
+            total_fetched += len(events)
+
+            if events:
+                existing = _load_existing_events(store, current, chunk_end, zlat, zlon)
+                new_events = []
+                for ev in events:
+                    if _is_duplicate(ev, existing, dedup_radius_km, dedup_time_s):
+                        total_dup += 1
+                    else:
+                        new_events.append(ev)
+                inserted = store.bulk_insert_earthquakes(new_events)
+                zone_new += inserted
+                total_new += inserted
+                log.info(f"  {zone['id']} {current:%Y-%m}: {len(events)} fetched, "
+                         f"{inserted} new")
+
+            current = chunk_end
+            time.sleep(0.3)
+
+        log.info(f"  zone {zone['id']} done: {zone_fetched:,} fetched, {zone_new:,} new")
+
+    log.info(f"EMSC backfill complete: {total_fetched:,} fetched, "
+             f"{total_new:,} new, {total_dup:,} dups skipped")
+    return {"source": "emsc_earthquake", "total": total_fetched,
+            "new": total_new, "dups": total_dup}
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +354,7 @@ def backfill_tides(store: QuakeStore, start_year: int = 2020):
                     "units": "metric",
                     "time_zone": "gmt",
                     "format": "json",
-                    "application": "SeismicLab",
+                    "application": "QuakeWatch",
                 }
                 url = f"https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?{urlencode(params)}"
                 data = _fetch_json(url, timeout=30)
@@ -646,5 +825,15 @@ if __name__ == "__main__":
                         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
                         datefmt="%H:%M:%S")
 
-    start_year = int(sys.argv[1]) if len(sys.argv) > 1 else 2015
-    run_full_backfill(start_year=start_year)
+    # Subcommand: `python -m ingest.backfill emsc [start_year] [end_year] [zone]`
+    if len(sys.argv) > 1 and sys.argv[1] == "emsc":
+        from .store import QuakeStore
+        sy = int(sys.argv[2]) if len(sys.argv) > 2 else 2015
+        ey = int(sys.argv[3]) if len(sys.argv) > 3 else 2026
+        only = sys.argv[4] if len(sys.argv) > 4 else None
+        zs = [z for z in EMSC_ZONES if z["id"] == only] if only else None
+        store = QuakeStore()
+        backfill_earthquakes_emsc(store, start_year=sy, end_year=ey, zones=zs)
+    else:
+        start_year = int(sys.argv[1]) if len(sys.argv) > 1 else 2015
+        run_full_backfill(start_year=start_year)

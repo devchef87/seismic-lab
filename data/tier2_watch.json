@@ -1,0 +1,488 @@
+{
+  "generated": "2026-06-29 02:00:00+00:00",
+  "base_rate_72h": 0.0602,
+  "n_active_swarms": 25,
+  "alert_counts": {
+    "NORMAL": 24,
+    "ADVISORY": 1,
+    "WATCH": 0,
+    "WARNING": 0
+  },
+  "watch": [
+    {
+      "cell": "south_america_-30_-072",
+      "zone": "south_america",
+      "lat_range": [
+        -30,
+        -20
+      ],
+      "lon_range": [
+        -72,
+        -62
+      ],
+      "escalation_prob_72h": 0.098,
+      "alert_level": "ADVISORY",
+      "lift_vs_base": 1.6,
+      "prob_6h_ago": 0.098,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mediterranean_+34_+019",
+      "zone": "mediterranean",
+      "lat_range": [
+        34,
+        43
+      ],
+      "lon_range": [
+        19,
+        29
+      ],
+      "escalation_prob_72h": 0.048,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.8,
+      "prob_6h_ago": 0.048,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "indonesia_-02_+095",
+      "zone": "indonesia",
+      "lat_range": [
+        -2,
+        8
+      ],
+      "lon_range": [
+        95,
+        105
+      ],
+      "escalation_prob_72h": 0.044,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.044,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "indonesia_-02_+115",
+      "zone": "indonesia",
+      "lat_range": [
+        -2,
+        8
+      ],
+      "lon_range": [
+        115,
+        125
+      ],
+      "escalation_prob_72h": 0.044,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.044,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "south_america_-40_-072",
+      "zone": "south_america",
+      "lat_range": [
+        -40,
+        -30
+      ],
+      "lon_range": [
+        -72,
+        -62
+      ],
+      "escalation_prob_72h": 0.044,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.044,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "south_america_+00_-082",
+      "zone": "south_america",
+      "lat_range": [
+        0,
+        7
+      ],
+      "lon_range": [
+        -82,
+        -72
+      ],
+      "escalation_prob_72h": 0.044,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.044,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "caribbean_+10_-067",
+      "zone": "caribbean",
+      "lat_range": [
+        10,
+        20
+      ],
+      "lon_range": [
+        -67,
+        -60
+      ],
+      "escalation_prob_72h": 0.044,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.044,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "indonesia_-12_+135",
+      "zone": "indonesia",
+      "lat_range": [
+        -12,
+        -2
+      ],
+      "lon_range": [
+        135,
+        140
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "indonesia_-02_+135",
+      "zone": "indonesia",
+      "lat_range": [
+        -2,
+        8
+      ],
+      "lon_range": [
+        135,
+        140
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "south_america_-20_-072",
+      "zone": "south_america",
+      "lat_range": [
+        -20,
+        -10
+      ],
+      "lon_range": [
+        -72,
+        -62
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mexico_ca_+07_-105",
+      "zone": "mexico_ca",
+      "lat_range": [
+        7,
+        17
+      ],
+      "lon_range": [
+        -105,
+        -95
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mexico_ca_+07_-085",
+      "zone": "mexico_ca",
+      "lat_range": [
+        7,
+        17
+      ],
+      "lon_range": [
+        -85,
+        -77
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mexico_ca_+17_-115",
+      "zone": "mexico_ca",
+      "lat_range": [
+        17,
+        25
+      ],
+      "lon_range": [
+        -115,
+        -105
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mexico_ca_+17_-105",
+      "zone": "mexico_ca",
+      "lat_range": [
+        17,
+        25
+      ],
+      "lon_range": [
+        -105,
+        -95
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "himalaya_+25_+070",
+      "zone": "himalaya",
+      "lat_range": [
+        25,
+        35
+      ],
+      "lon_range": [
+        70,
+        80
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "himalaya_+25_+090",
+      "zone": "himalaya",
+      "lat_range": [
+        25,
+        35
+      ],
+      "lon_range": [
+        90,
+        100
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "alaska_+50_-170",
+      "zone": "alaska",
+      "lat_range": [
+        50,
+        60
+      ],
+      "lon_range": [
+        -170,
+        -160
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "alaska_+50_-160",
+      "zone": "alaska",
+      "lat_range": [
+        50,
+        60
+      ],
+      "lon_range": [
+        -160,
+        -150
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "new_zealand_-38_+175",
+      "zone": "new_zealand",
+      "lat_range": [
+        -38,
+        -34
+      ],
+      "lon_range": [
+        175,
+        180
+      ],
+      "escalation_prob_72h": 0.036,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.6,
+      "prob_6h_ago": 0.036,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "new_zealand_-48_+175",
+      "zone": "new_zealand",
+      "lat_range": [
+        -48,
+        -38
+      ],
+      "lon_range": [
+        175,
+        180
+      ],
+      "escalation_prob_72h": 0.023,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.4,
+      "prob_6h_ago": 0.023,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "california_+32_-125",
+      "zone": "california",
+      "lat_range": [
+        32,
+        42
+      ],
+      "lon_range": [
+        -125,
+        -115
+      ],
+      "escalation_prob_72h": 0.018,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.3,
+      "prob_6h_ago": 0.018,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mediterranean_+34_+039",
+      "zone": "mediterranean",
+      "lat_range": [
+        34,
+        43
+      ],
+      "lon_range": [
+        39,
+        45
+      ],
+      "escalation_prob_72h": 0.018,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.3,
+      "prob_6h_ago": 0.018,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "mediterranean_+34_+029",
+      "zone": "mediterranean",
+      "lat_range": [
+        34,
+        43
+      ],
+      "lon_range": [
+        29,
+        39
+      ],
+      "escalation_prob_72h": 0.016,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.3,
+      "prob_6h_ago": 0.016,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "alaska_+60_-170",
+      "zone": "alaska",
+      "lat_range": [
+        60,
+        70
+      ],
+      "lon_range": [
+        -170,
+        -160
+      ],
+      "escalation_prob_72h": 0.013,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.2,
+      "prob_6h_ago": 0.013,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    },
+    {
+      "cell": "alaska_+60_-150",
+      "zone": "alaska",
+      "lat_range": [
+        60,
+        70
+      ],
+      "lon_range": [
+        -150,
+        -140
+      ],
+      "escalation_prob_72h": 0.013,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.2,
+      "prob_6h_ago": 0.013,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null
+    }
+  ]
+}

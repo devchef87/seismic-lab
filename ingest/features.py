@@ -1,4 +1,4 @@
-"""SeismicLab — Feature alignment layer.
+"""QuakeWatch — Feature alignment layer.
 
 Builds ML training matrices by aligning multi-signal time series
 to hourly windows around earthquake events.
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from .store import QuakeStore
 
-log = logging.getLogger("seismiclab.features")
+log = logging.getLogger("quakewatch.features")
 UTC = timezone.utc
 
 LOOKBACK_HOURS = [1, 2, 4, 6, 12, 24, 48]

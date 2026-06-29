@@ -1,4 +1,4 @@
-"""SeismicLab Lab — Tidal Triggering Analysis
+"""QuakeWatch Lab — Tidal Triggering Analysis
 
 Tests whether earthquakes preferentially occur at certain tidal phases.
 If a fault responds to tidal forcing (~1 kPa), it's critically stressed
@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 UTC = timezone.utc
 
 ZONES = [

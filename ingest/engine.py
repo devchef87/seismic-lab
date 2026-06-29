@@ -1,4 +1,4 @@
-"""SeismicLab — Ingestion engine. Runs all sources on their poll intervals."""
+"""QuakeWatch — Ingestion engine. Runs all sources on their poll intervals."""
 
 import sqlite3
 import time
@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from .sources import SOURCE_REGISTRY
 from .store import QuakeStore
 
-log = logging.getLogger("seismiclab.engine")
+log = logging.getLogger("quakewatch.engine")
 
 
 class IngestEngine:

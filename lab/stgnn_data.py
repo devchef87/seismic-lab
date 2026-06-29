@@ -1,4 +1,4 @@
-"""SeismicLab — ST-GNN Data Pipeline
+"""QuakeWatch — ST-GNN Data Pipeline
 
 Builds spatio-temporal graph datasets for earthquake prediction.
 Graph structure:
@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 UTC = timezone.utc
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 
 STATIONS = [
     {"key": "IU.COLA", "lat": 64.87, "lon": -147.86},
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     )
 
     print("=" * 60)
-    print("  ST-GNN DATA PIPELINE — SEISMICLAB")
+    print("  ST-GNN DATA PIPELINE — QUAKEWATCH")
     print("=" * 60)
 
     ds = build_dataset(start=args.start, end=args.end, save_path=save_path)

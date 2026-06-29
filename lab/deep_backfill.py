@@ -1,6 +1,6 @@
 """Deep historical backfill — fetch 5 years of seismic waveforms from FDSN/IRIS.
 
-Downloads BHZ waveforms for all 24 stations from 2021-07-01 to present,
+Downloads BHZ waveforms for all 24 stations from 2015-01-01 to present,
 computes 5-minute aggregate metrics (amp_min, amp_max, amp_mean, sta_lta_ratio),
 and stores in the station_metrics table.
 
@@ -32,7 +32,7 @@ log = logging.getLogger("deep_backfill")
 
 UTC = timezone.utc
 
-BACKFILL_START = datetime(2021, 7, 1, tzinfo=UTC)
+BACKFILL_START = datetime(2015, 1, 1, tzinfo=UTC)
 CHUNK_HOURS = 6
 METRIC_WINDOW_SEC = 300  # 5-minute aggregation
 MAX_WORKERS = 6
@@ -67,7 +67,7 @@ STATIONS = [
     {"net": "II", "sta": "TAU",  "loc": "00", "cha": "BHZ", "name": "Hobart, Tasmania"},
 ]
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "seismiclab.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "quakewatch.db")
 
 
 def get_existing_coverage(station_key):

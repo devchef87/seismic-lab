@@ -1,12 +1,18 @@
-"""SeismicLab — Zone-Focused ST-GNN Test Training (v2)
+"""SeismicLab — Zone-Focused ST-GNN Test Training (v3)
 
-Full-feature run: seismic + solar/geomagnetic + tidal + DART buoy data.
-24h lookback, 6h prediction horizon.
+v3 fixes from v2:
+- Normalization computed from training split only (no data leak)
+- Replaced oversampling with class-weighted focal loss (no memorization)
+- Removed fully-connected GAT (6 nodes @ 6000km = meaningless graph)
+- Station embeddings mean-pooled instead
+- Smoother LR schedule (ReduceLROnPlateau, no restarts)
+- Much stronger regularization (dropout 0.5, weight_decay 0.01)
+- Smaller model (hidden=32, ~45K params vs 143K)
+- Larger batch size (256) for smoother gradients
 
 Stations: TEIG, SJG, ANMO, TUC, COR, COLA
-DART buoys: 43413 (E. Pacific), 42407 (Caribbean), 41420/41421 (N. Caribbean), 42409 (Gulf)
-Target zones: mexico_ca, caribbean
-Data range: 2021-07-01 → present
+DART buoys: 43413, 42407, 41420, 41421, 42409
+Target zones: indonesia, japan_kurils, south_america, mexico_ca, himalaya, alaska
 """
 
 import os
@@ -19,7 +25,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import roc_auc_score, roc_curve, f1_score, precision_score, recall_score
 from datetime import datetime, timedelta, timezone
 
@@ -29,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 UTC = timezone.utc
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -56,12 +62,16 @@ DART_BUOYS = [
     {"id": "42409", "lat": 25.797, "lon": -89.288},
 ]
 NUM_DART = len(DART_BUOYS)
-DART_FEATURES_PER = 3  # height, rate_of_change, rolling_std
+DART_FEATURES_PER = 3
 
-# --- Target zones ---
+# --- Target zones (6 most active, no dateline wrapping) ---
 ZONES = [
-    {"id": "mexico_ca",  "lat_range": [7, 25],  "lon_range": [-115, -77]},
-    {"id": "caribbean",  "lat_range": [10, 22], "lon_range": [-85, -60]},
+    {"id": "indonesia",    "lat_range": [-12, 8],   "lon_range": [95, 140]},
+    {"id": "japan_kurils", "lat_range": [25, 50],   "lon_range": [128, 155]},
+    {"id": "south_america","lat_range": [-60, 7],   "lon_range": [-82, -60]},
+    {"id": "mexico_ca",    "lat_range": [7, 25],    "lon_range": [-115, -77]},
+    {"id": "himalaya",     "lat_range": [25, 42],   "lon_range": [65, 100]},
+    {"id": "alaska",       "lat_range": [50, 72],   "lon_range": [-180, -130]},
 ]
 NUM_ZONES = len(ZONES)
 
@@ -71,7 +81,7 @@ NODE_FEATURES = ["amp_min", "amp_max", "amp_mean", "sta_lta_ratio", "triggered",
                  "amp_trend_1h", "noise_floor_delta"]
 NUM_NODE_FEATURES = len(NODE_FEATURES)
 
-# --- Global features from samples table ---
+# --- Global features ---
 GLOBAL_METRICS = [
     "solar_wind_speed", "solar_wind_density", "solar_wind_temp",
     "imf_bt", "imf_bz_gsm",
@@ -80,48 +90,13 @@ GLOBAL_METRICS = [
     "neutron_count", "ief",
 ]
 NUM_GLOBAL_RAW = len(GLOBAL_METRICS)
-NUM_GLOBAL_FEATURES = NUM_GLOBAL_RAW + 2  # +sw_dynamic_pressure, +imf_coupling
+NUM_GLOBAL_FEATURES = NUM_GLOBAL_RAW + 2
 
 # --- Training params ---
 LOOKBACK_STEPS = 288      # 24 hours
-HORIZON_STEPS = 72        # 6 hours
+HORIZON_STEPS = 288       # 24 hours
 STEP_MINUTES = 5
 MIN_MAG = 5.0
-EDGE_DISTANCE_KM = 6000
-
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-
-
-def build_edge_index():
-    src, dst = [], []
-    for i, si in enumerate(STATIONS):
-        for j, sj in enumerate(STATIONS):
-            if i == j:
-                continue
-            d = haversine_km(si["lat"], si["lon"], sj["lat"], sj["lon"])
-            if d <= EDGE_DISTANCE_KM:
-                src.append(i)
-                dst.append(j)
-    return np.array([src, dst], dtype=np.int64)
-
-
-def build_edge_weights(edge_index):
-    weights = []
-    for k in range(edge_index.shape[1]):
-        i, j = edge_index[0, k], edge_index[1, k]
-        d = haversine_km(STATIONS[i]["lat"], STATIONS[i]["lon"],
-                         STATIONS[j]["lat"], STATIONS[j]["lon"])
-        weights.append(1.0 / max(d, 100))
-    weights = np.array(weights, dtype=np.float32)
-    if weights.max() > 0:
-        weights /= weights.max()
-    return weights
 
 
 def compute_rolling_features(station_df):
@@ -227,16 +202,13 @@ def build_dataset():
         coverage = (merged["value"] != 0).sum() / T * 100
         print(f"    {metric}: {len(mdf):,} bins ({coverage:.0f}% coverage)")
 
-    # Derived global features
     sw_speed_idx = GLOBAL_METRICS.index("solar_wind_speed")
     sw_density_idx = GLOBAL_METRICS.index("solar_wind_density")
     imf_bz_idx = GLOBAL_METRICS.index("imf_bz_gsm")
 
-    # Dynamic pressure: ~0.5 * n * v^2 (normalized)
     global_data[:, NUM_GLOBAL_RAW] = (
         global_data[:, sw_density_idx] * global_data[:, sw_speed_idx] ** 2 / 1e12
     )
-    # IMF coupling: v * |Bz_south| (only when Bz is southward / negative)
     bz = global_data[:, imf_bz_idx]
     global_data[:, NUM_GLOBAL_RAW + 1] = (
         global_data[:, sw_speed_idx] * np.abs(np.minimum(bz, 0))
@@ -250,7 +222,6 @@ def build_dataset():
     # ── 3. DART buoy data ──
     print(f"\n  [3/4] Loading DART buoy data ({NUM_DART} buoys)...")
     dart_data = np.zeros((T, NUM_DART, DART_FEATURES_PER), dtype=np.float32)
-    dart_ids = [b["id"] for b in DART_BUOYS]
 
     for di, buoy in enumerate(DART_BUOYS):
         rows = conn.execute("""
@@ -272,9 +243,7 @@ def build_dataset():
 
         height = merged["height_m"].values[:T].astype(np.float32)
         dart_data[:, di, 0] = height
-        # Rate of change (mm/step)
         dart_data[1:, di, 1] = np.diff(height) * 1000
-        # Rolling 1h std
         h_series = pd.Series(height)
         dart_data[:, di, 2] = h_series.rolling(12, min_periods=1).std().fillna(0).values
 
@@ -321,54 +290,16 @@ def build_dataset():
     for zone in ZONES:
         print(f"    {zone['id']}: {event_count[zone['id']]} M{MIN_MAG}+ events")
 
-    # ── Normalize ──
-    print("\n  Normalizing...")
-    node_mean = node_data.mean(axis=(0, 1), keepdims=True)
-    node_std = node_data.std(axis=(0, 1), keepdims=True)
-    node_std[node_std < 1e-8] = 1.0
-    node_data = (node_data - node_mean) / node_std
-
-    global_mean = global_data.mean(axis=0, keepdims=True)
-    global_std = global_data.std(axis=0, keepdims=True)
-    global_std[global_std < 1e-8] = 1.0
-    global_data = (global_data - global_mean) / global_std
-
-    dart_mean = dart_data.mean(axis=(0, 1), keepdims=True)
-    dart_std = dart_data.std(axis=(0, 1), keepdims=True)
-    dart_std[dart_std < 1e-8] = 1.0
-    dart_data = (dart_data - dart_mean) / dart_std
-
-    pos_rate = target_data.mean()
-    print(f"\n  Overall positive rate: {pos_rate:.4f}")
-    for zi, zone in enumerate(ZONES):
-        print(f"    {zone['id']:15s} {target_data[:, zi].mean():.5f}")
-
-    # Graph
-    edge_index = build_edge_index()
-    edge_weight = build_edge_weights(edge_index)
-    print(f"  Graph: {NUM_STATIONS} nodes, {edge_index.shape[1]} edges")
-
-    mem_mb = (node_data.nbytes + global_data.nbytes + dart_data.nbytes + target_data.nbytes) / 1e6
-    print(f"  Memory: {mem_mb:.0f} MB")
-
     return {
         "node_features": node_data,
         "global_features": global_data,
         "dart_features": dart_data,
         "targets": target_data,
-        "edge_index": edge_index,
-        "edge_weight": edge_weight,
         "time_bins": time_bins.values,
-        "norm_params": {
-            "node_mean": node_mean, "node_std": node_std,
-            "global_mean": global_mean, "global_std": global_std,
-            "dart_mean": dart_mean, "dart_std": dart_std,
-        },
     }
 
 
 class ZoneDataset(Dataset):
-    """Lazy windowing dataset — indexes into base arrays on the fly."""
     def __init__(self, node_features, global_features, dart_features, targets, start_idx, end_idx):
         self.node = node_features
         self.glob = global_features
@@ -393,20 +324,19 @@ class ZoneDataset(Dataset):
 
 
 class TemporalEncoder(nn.Module):
-    def __init__(self, in_features, hidden_dim=64, num_layers=2, dropout=0.1):
+    def __init__(self, in_features, hidden_dim=32, num_layers=1, dropout=0.3):
         super().__init__()
-        # Strided convs: 288 → 144 → 72 steps before GRU
-        self.conv1 = nn.Conv1d(in_features, hidden_dim, kernel_size=5, stride=2, padding=2)
+        self.conv1 = nn.Conv1d(in_features, hidden_dim, kernel_size=7, stride=4, padding=3)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.conv2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=5, stride=4, padding=2)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.drop = nn.Dropout(dropout)
+        # 288 → 72 → 18 steps — GRU only sees 18 steps
         self.gru = nn.GRU(hidden_dim, hidden_dim, num_layers=num_layers,
-                          batch_first=True, dropout=dropout if num_layers > 1 else 0)
+                          batch_first=True, dropout=0)
         self.norm = nn.LayerNorm(hidden_dim)
 
     def forward(self, x):
-        B, T, Fin = x.shape
         h = self.drop(F.gelu(self.bn1(self.conv1(x.transpose(1, 2)))))
         h = self.drop(F.gelu(self.bn2(self.conv2(h))))
         h = h.transpose(1, 2)
@@ -414,69 +344,23 @@ class TemporalEncoder(nn.Module):
         return self.norm(h[:, -1, :])
 
 
-class GraphAttentionLayer(nn.Module):
-    def __init__(self, in_dim, out_dim, dropout=0.1):
-        super().__init__()
-        self.W = nn.Linear(in_dim, out_dim, bias=False)
-        self.a_src = nn.Linear(out_dim, 1, bias=False)
-        self.a_dst = nn.Linear(out_dim, 1, bias=False)
-        self.dropout = nn.Dropout(dropout)
-        self.leaky = nn.LeakyReLU(0.2)
-
-    def forward(self, x, edge_index, edge_weight=None):
-        B, N, _ = x.shape
-        h = self.W(x)
-        src, dst = edge_index[0], edge_index[1]
-        e_src = self.a_src(h[:, src])
-        e_dst = self.a_dst(h[:, dst])
-        e = self.leaky(e_src + e_dst).squeeze(-1)
-        if edge_weight is not None:
-            e = e * edge_weight.unsqueeze(0)
-        alpha = torch.full((B, N, N), float('-inf'), device=x.device)
-        alpha[:, dst, src] = e
-        alpha = torch.softmax(alpha, dim=-1)
-        alpha = self.dropout(alpha)
-        return torch.bmm(alpha, h)
-
-
-class MultiHeadGAT(nn.Module):
-    def __init__(self, in_dim, hidden_dim, num_heads=4, dropout=0.1):
-        super().__init__()
-        head_dim = hidden_dim // num_heads
-        self.heads = nn.ModuleList([
-            GraphAttentionLayer(in_dim, head_dim, dropout) for _ in range(num_heads)
-        ])
-        self.norm = nn.LayerNorm(hidden_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, edge_index, edge_weight=None):
-        head_outs = [head(x, edge_index, edge_weight) for head in self.heads]
-        out = torch.cat(head_outs, dim=-1)
-        return self.norm(self.dropout(out) + x if out.shape == x.shape else self.norm(out))
-
-
 class ZoneSTGNN(nn.Module):
-    """Multi-source ST-GNN: seismic nodes + global features + DART buoys."""
-    def __init__(self, hidden_dim=48, num_gat_heads=4, num_gat_layers=2, dropout=0.2):
+    """v3: simplified — no GAT (graph was fully connected = meaningless),
+    mean-pool station embeddings instead."""
+    def __init__(self, hidden_dim=32, dropout=0.5):
         super().__init__()
         self.hidden_dim = hidden_dim
 
-        # Three temporal encoders for different data sources
         self.seismic_enc = TemporalEncoder(NUM_NODE_FEATURES, hidden_dim, dropout=dropout)
         self.global_enc = TemporalEncoder(NUM_GLOBAL_FEATURES, hidden_dim, dropout=dropout)
         self.dart_enc = TemporalEncoder(DART_FEATURES_PER, hidden_dim, dropout=dropout)
 
-        # GAT over seismic station embeddings
-        self.gat_layers = nn.ModuleList([
-            MultiHeadGAT(hidden_dim, hidden_dim, num_gat_heads, dropout)
-            for _ in range(num_gat_layers)
-        ])
-
-        # Zone cross-attention: queries = zone params, keys/values = all source embeddings
-        # Total keys: NUM_STATIONS + 1 (global) + NUM_DART = 12
-        self.zone_query = nn.Parameter(torch.randn(NUM_ZONES, hidden_dim))
+        # Zone cross-attention over pooled sources
+        # Keys: 1 (mean station) + 1 (global) + NUM_DART = 7
+        self.zone_query = nn.Parameter(torch.randn(NUM_ZONES, hidden_dim) * 0.02)
         self.zone_attn = nn.MultiheadAttention(hidden_dim, num_heads=4,
                                                 batch_first=True, dropout=dropout)
+        self.zone_norm = nn.LayerNorm(hidden_dim)
 
         self.classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -485,50 +369,51 @@ class ZoneSTGNN(nn.Module):
             nn.Linear(hidden_dim, 1),
         )
 
-    def forward(self, x_node, x_global, x_dart, edge_index, edge_weight=None):
+    def forward(self, x_node, x_global, x_dart):
         B, T, N, Feat = x_node.shape
 
-        # Seismic: (B, T, N_stations, F) → (B, N_stations, H)
+        # Seismic: encode each station, then mean-pool
         x_flat = x_node.permute(0, 2, 1, 3).reshape(B * N, T, Feat)
         station_emb = self.seismic_enc(x_flat).view(B, N, self.hidden_dim)
+        station_pooled = station_emb.mean(dim=1, keepdim=True)  # (B, 1, H)
 
-        for gat in self.gat_layers:
-            station_emb = station_emb + gat(station_emb, edge_index, edge_weight)
+        # Global
+        global_emb = self.global_enc(x_global).unsqueeze(1)  # (B, 1, H)
 
-        # Global: (B, T, F_global) → (B, 1, H)
-        global_emb = self.global_enc(x_global).unsqueeze(1)
-
-        # DART: (B, T, N_dart, F_dart) → (B, N_dart, H)
+        # DART
         Nd = x_dart.shape[2]
         dart_flat = x_dart.permute(0, 2, 1, 3).reshape(B * Nd, T, DART_FEATURES_PER)
-        dart_emb = self.dart_enc(dart_flat).view(B, Nd, self.hidden_dim)
+        dart_emb = self.dart_enc(dart_flat).view(B, Nd, self.hidden_dim)  # (B, 5, H)
 
-        # Concat all source embeddings as keys/values
-        all_emb = torch.cat([station_emb, global_emb, dart_emb], dim=1)
+        all_emb = torch.cat([station_pooled, global_emb, dart_emb], dim=1)  # (B, 7, H)
 
-        # Zone cross-attention
         zone_q = self.zone_query.unsqueeze(0).expand(B, -1, -1)
         zone_emb, _ = self.zone_attn(zone_q, all_emb, all_emb)
+        zone_emb = self.zone_norm(zone_emb + zone_q.expand_as(zone_emb))
 
         logits = self.classifier(zone_emb).squeeze(-1)
         return logits
 
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.75, gamma=2.0):
+    def __init__(self, alpha=0.75, gamma=2.0, pos_weight=1.0):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
+        self.pos_weight = pos_weight
 
     def forward(self, logits, targets):
-        bce = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        bce = F.binary_cross_entropy_with_logits(
+            logits, targets, reduction='none',
+            pos_weight=torch.tensor(self.pos_weight, device=logits.device),
+        )
         p = torch.sigmoid(logits)
         pt = targets * p + (1 - targets) * (1 - p)
         focal_weight = self.alpha * (1 - pt) ** self.gamma
         return (focal_weight * bce).mean()
 
 
-def train_epoch(model, loader, optimizer, criterion, ei, ew):
+def train_epoch(model, loader, optimizer, criterion):
     model.train()
     total_loss = 0
     for x_node, x_glob, x_dart, y in loader:
@@ -537,7 +422,7 @@ def train_epoch(model, loader, optimizer, criterion, ei, ew):
         x_dart = x_dart.to(DEVICE)
         y = y.to(DEVICE)
         optimizer.zero_grad()
-        logits = model(x_node, x_glob, x_dart, ei, ew)
+        logits = model(x_node, x_glob, x_dart)
         loss = criterion(logits, y)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -547,7 +432,7 @@ def train_epoch(model, loader, optimizer, criterion, ei, ew):
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, ei, ew):
+def evaluate(model, loader, criterion):
     model.eval()
     total_loss = 0
     all_preds, all_targets = [], []
@@ -557,7 +442,7 @@ def evaluate(model, loader, criterion, ei, ew):
         x_glob = x_glob.to(DEVICE)
         x_dart = x_dart.to(DEVICE)
         y = y.to(DEVICE)
-        logits = model(x_node, x_glob, x_dart, ei, ew)
+        logits = model(x_node, x_glob, x_dart)
         loss = criterion(logits, y)
         total_loss += loss.item() * x_node.size(0)
         all_preds.append(torch.sigmoid(logits).cpu().numpy())
@@ -595,21 +480,19 @@ def evaluate(model, loader, criterion, ei, ew):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Zone-focused ST-GNN v2 — full features")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--hidden", type=int, default=48)
-    parser.add_argument("--gat-heads", type=int, default=4)
-    parser.add_argument("--gat-layers", type=int, default=2)
-    parser.add_argument("--dropout", type=float, default=0.3)
-    parser.add_argument("--patience", type=int, default=15)
+    parser = argparse.ArgumentParser(description="Zone-focused ST-GNN v3")
+    parser.add_argument("--epochs", type=int, default=60)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--hidden", type=int, default=32)
+    parser.add_argument("--dropout", type=float, default=0.5)
+    parser.add_argument("--patience", type=int, default=20)
     args = parser.parse_args()
 
     print("=" * 70)
-    print("  ZONE TEST v2 — ST-GNN (Mexico/CA + Caribbean)")
-    print("  Full features: seismic + solar/geomag + tidal + DART")
-    print("  24h lookback → 6h prediction horizon, M5.0+")
+    print("  ZONE TEST v3 — ST-GNN (6 zones)")
+    print("  Fixes: train-only norm, no oversampling, no GAT, stronger reg")
+    print("  24h lookback → 24h prediction horizon, M5.0+")
     print("=" * 70)
 
     print(f"\n  Building dataset...")
@@ -621,81 +504,99 @@ def main():
     target_data = dataset["targets"]
     T = node_data.shape[0]
     n_seq = T - LOOKBACK_STEPS - HORIZON_STEPS + 1
-    print(f"\n  Sequences: {n_seq:,} (lookback={LOOKBACK_STEPS} [{LOOKBACK_STEPS*5/60:.0f}h], "
-          f"horizon={HORIZON_STEPS} [{HORIZON_STEPS*5/60:.0f}h])")
-    print(f"  Features: {NUM_NODE_FEATURES} seismic/station × {NUM_STATIONS} stations "
-          f"+ {NUM_GLOBAL_FEATURES} global + {DART_FEATURES_PER}/buoy × {NUM_DART} DART")
 
     # Temporal split
     train_end = int(n_seq * 0.7)
     val_end = int(n_seq * 0.85)
 
+    # ── Normalize using TRAINING DATA ONLY ──
+    print("\n  Normalizing (train-only stats)...")
+    train_node = node_data[:train_end + LOOKBACK_STEPS]
+    node_mean = train_node.mean(axis=(0, 1), keepdims=True)
+    node_std = train_node.std(axis=(0, 1), keepdims=True)
+    node_std[node_std < 1e-8] = 1.0
+    node_data = (node_data - node_mean) / node_std
+
+    train_glob = global_data[:train_end + LOOKBACK_STEPS]
+    global_mean = train_glob.mean(axis=0, keepdims=True)
+    global_std = train_glob.std(axis=0, keepdims=True)
+    global_std[global_std < 1e-8] = 1.0
+    global_data = (global_data - global_mean) / global_std
+
+    train_dart = dart_data[:train_end + LOOKBACK_STEPS]
+    dart_mean = train_dart.mean(axis=(0, 1), keepdims=True)
+    dart_std = train_dart.std(axis=(0, 1), keepdims=True)
+    dart_std[dart_std < 1e-8] = 1.0
+    dart_data = (dart_data - dart_mean) / dart_std
+
+    pos_rate = target_data.mean()
+    print(f"\n  Overall positive rate: {pos_rate:.4f}")
+    for zi, zone in enumerate(ZONES):
+        print(f"    {zone['id']:15s} {target_data[:, zi].mean():.5f}")
+
+    print(f"\n  Sequences: {n_seq:,} (lookback={LOOKBACK_STEPS} [{LOOKBACK_STEPS*5/60:.0f}h], "
+          f"horizon={HORIZON_STEPS} [{HORIZON_STEPS*5/60:.0f}h])")
+    print(f"  Features: {NUM_NODE_FEATURES} seismic/station × {NUM_STATIONS} stations "
+          f"+ {NUM_GLOBAL_FEATURES} global + {DART_FEATURES_PER}/buoy × {NUM_DART} DART")
+
     train_ds = ZoneDataset(node_data, global_data, dart_data, target_data, 0, train_end)
     val_ds = ZoneDataset(node_data, global_data, dart_data, target_data, train_end, val_end)
     test_ds = ZoneDataset(node_data, global_data, dart_data, target_data, val_end, n_seq)
 
-    # Weighted sampler
-    print("  Computing sample weights for oversampling...")
+    # Compute class weight from training labels (no oversampling)
     train_labels = np.zeros(len(train_ds), dtype=np.float32)
     for i in range(len(train_ds)):
         y_window = target_data[i + LOOKBACK_STEPS:i + LOOKBACK_STEPS + HORIZON_STEPS]
         train_labels[i] = y_window.max()
     pos_count = train_labels.sum()
     neg_count = len(train_labels) - pos_count
-    weight_pos = neg_count / max(pos_count, 1)
-    sample_weights = np.where(train_labels > 0, weight_pos, 1.0)
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(train_ds), replacement=True)
+    pos_weight = min(neg_count / max(pos_count, 1), 10.0)  # cap at 10x
     pos_pct = pos_count / len(train_labels) * 100
-    print(f"  Train: {len(train_ds):,}  Val: {len(val_ds):,}  Test: {len(test_ds):,}")
-    print(f"  Positives in train: {int(pos_count):,} ({pos_pct:.2f}%) — oversampling {weight_pos:.1f}x")
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, sampler=sampler,
+    print(f"  Train: {len(train_ds):,}  Val: {len(val_ds):,}  Test: {len(test_ds):,}")
+    print(f"  Positives in train: {int(pos_count):,} ({pos_pct:.2f}%)")
+    print(f"  Class weight: pos_weight={pos_weight:.1f}x (capped at 10x)")
+
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
                               num_workers=4, pin_memory=True, persistent_workers=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False,
                             num_workers=4, pin_memory=True, persistent_workers=True)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
                              num_workers=2)
 
-    ei = torch.from_numpy(dataset["edge_index"]).to(DEVICE)
-    ew = torch.from_numpy(dataset["edge_weight"]).to(DEVICE)
-
     model = ZoneSTGNN(
         hidden_dim=args.hidden,
-        num_gat_heads=args.gat_heads,
-        num_gat_layers=args.gat_layers,
         dropout=args.dropout,
     ).to(DEVICE)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"\n  Model: {n_params:,} parameters")
-    print(f"  Hidden: {args.hidden}, GAT heads: {args.gat_heads}, GAT layers: {args.gat_layers}")
+    print(f"  Hidden: {args.hidden}, dropout: {args.dropout}")
     print(f"  Device: {DEVICE}")
 
-    criterion = FocalLoss(alpha=0.75, gamma=2.0)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    criterion = FocalLoss(alpha=0.75, gamma=2.0, pos_weight=pos_weight)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=5, min_lr=1e-6)
 
     best_val_auc = 0
     patience_counter = 0
-    best_path = os.path.join(MODEL_DIR, "stgnn_zone_test_v2.pt")
+    best_path = os.path.join(MODEL_DIR, "stgnn_zone_test_v3.pt")
 
     print(f"\n  Training for up to {args.epochs} epochs (patience={args.patience})...")
     print(f"  {'Epoch':>5} {'Train':>10} {'Val':>9} {'AUC':>7} {'Thr':>5} "
-          f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MX_CA':>7} {'CARIB':>7} {'LR':>10}")
-    print("  " + "-" * 90)
+          f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'LR':>12}")
+    print("  " + "-" * 78)
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
 
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, ei, ew)
-        val = evaluate(model, val_loader, criterion, ei, ew)
-        scheduler.step()
+        train_loss = train_epoch(model, train_loader, optimizer, criterion)
+        val = evaluate(model, val_loader, criterion)
+        scheduler.step(val.get("auc", 0))
 
         lr = optimizer.param_groups[0]["lr"]
         elapsed = time.time() - t0
-
-        mx_auc = val.get("zone_aucs", {}).get("mexico_ca", 0)
-        cb_auc = val.get("zone_aucs", {}).get("caribbean", 0)
 
         thresh = val.get('threshold', 0.5)
         print(f"  {epoch:>5d} {train_loss:>10.5f} {val['loss']:>9.5f} "
@@ -703,8 +604,7 @@ def main():
               f"{val.get('precision', 0):>6.3f} "
               f"{val.get('recall', 0):>6.3f} "
               f"{val.get('f1', 0):>6.3f} "
-              f"{mx_auc:>7.4f} {cb_auc:>7.4f} "
-              f"{lr:>10.6f}  ({elapsed:.1f}s)")
+              f"{lr:>12.6f}  ({elapsed:.1f}s)")
 
         if val.get("auc", 0) > best_val_auc:
             best_val_auc = val["auc"]
@@ -717,7 +617,11 @@ def main():
                 "stations": STATION_KEYS,
                 "dart_buoys": [b["id"] for b in DART_BUOYS],
                 "zones": [z["id"] for z in ZONES],
-                "norm_params": dataset["norm_params"],
+                "norm_params": {
+                    "node_mean": node_mean, "node_std": node_std,
+                    "global_mean": global_mean, "global_std": global_std,
+                    "dart_mean": dart_mean, "dart_std": dart_std,
+                },
                 "args": vars(args),
             }, best_path)
             print(f"         ↑ best AUC={best_val_auc:.4f} → {best_path}")
@@ -735,7 +639,7 @@ def main():
     ckpt = torch.load(best_path, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ckpt["model_state"])
 
-    test_metrics = evaluate(model, test_loader, criterion, ei, ew)
+    test_metrics = evaluate(model, test_loader, criterion)
     print(f"  Test Loss:      {test_metrics['loss']:.5f}")
     print(f"  Test AUC:       {test_metrics.get('auc', 0):.4f}")
     print(f"  Test Precision: {test_metrics.get('precision', 0):.4f}")

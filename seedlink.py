@@ -1,8 +1,8 @@
-"""SeismicLab Seismic Monitor — real-time waveform monitoring via FDSN with STA/LTA detection.
+"""QuakeWatch Seismic Monitor — real-time waveform monitoring via FDSN with STA/LTA detection.
 
 Polls waveforms from IRIS/EarthScope FDSN for key stations near monitored
 seismic zones, runs STA/LTA trigger detection, and estimates magnitude from
-amplitude. Detected events are injected into the SeismicLab store within
+amplitude. Detected events are injected into the QuakeWatch store within
 ~30-60 seconds of ground motion.
 
 Station metrics are persisted to SQLite for model training. Raw ~5 Hz samples
@@ -22,7 +22,7 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 from collections import deque
 
-log = logging.getLogger("seismiclab.seedlink")
+log = logging.getLogger("quakewatch.seedlink")
 UTC = timezone.utc
 
 STATIONS = [
@@ -365,7 +365,7 @@ class SeedLinkMonitor:
         try:
             conn = sqlite3.connect(str(self._db_path), timeout=10)
             rows = conn.execute(
-                "SELECT amp_min, amp_max FROM station_metrics "
+                "SELECT amp_min, amp_max, timestamp FROM station_metrics "
                 "WHERE station = ? AND timestamp >= ? ORDER BY timestamp ASC",
                 (station_key, cutoff)
             ).fetchall()
@@ -374,11 +374,19 @@ class SeedLinkMonitor:
             rows = []
 
         envelope = [{"mn": r[0], "mx": r[1]} for r in rows]
+        data_seconds = 0
+        if len(rows) >= 2:
+            t0 = datetime.fromisoformat(rows[0][2])
+            t1 = datetime.fromisoformat(rows[-1][2])
+            data_seconds = (t1 - t0).total_seconds()
+
         return {
             "station": station_key,
             "scale": scale,
             "mode": "envelope",
             "envelope": envelope,
+            "data_seconds": data_seconds,
+            "window_seconds": hours * 3600,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 

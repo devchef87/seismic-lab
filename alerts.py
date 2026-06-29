@@ -1,4 +1,4 @@
-"""SeismicLab Alert Scanner — monitors threat detector, emails on escalation, logs all predictions."""
+"""QuakeWatch Alert Scanner — monitors threat detector, emails on escalation, logs all predictions."""
 
 import os
 import json
@@ -13,13 +13,13 @@ from pathlib import Path
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-log = logging.getLogger("seismiclab.alerts")
+log = logging.getLogger("quakewatch.alerts")
 UTC = timezone.utc
 
-ENV_PATH = Path(os.environ.get("ENV_PATH", str(Path(__file__).parent / ".env")))
+ENV_PATH = Path("/home/axom/Desktop/Axom/.env")
 PREDICTION_LOG = Path(__file__).parent / "data" / "predictions.jsonl"
-SENDER = os.environ.get("ALERT_SENDER", "")
-RECIPIENT = os.environ.get("ALERT_RECIPIENT", "")
+SENDER = "support@motovizion.com"
+RECIPIENT = "ryan@axomlabs.ai"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 ESCALATE_THRESHOLD = 0.60
@@ -83,7 +83,7 @@ def _build_alert_email(zone, level):
     html = f"""
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;max-width:640px;margin:0 auto;background:#0a0c12;color:#ccc;border-radius:12px;overflow:hidden">
         <div style="background:linear-gradient(135deg,#0d1117,#161b22);padding:32px 28px 24px;border-bottom:1px solid rgba(255,255,255,0.06)">
-            <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#666;margin-bottom:12px">SeismicLab Alert</div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#666;margin-bottom:12px">QuakeWatch Alert</div>
             <div style="font-size:28px;font-weight:600;color:{level_color};margin-bottom:4px">{level}</div>
             <div style="font-size:18px;color:#e0e0e0">{zone['name']}</div>
             <div style="font-size:12px;color:#666;margin-top:8px">{ts}</div>
@@ -133,7 +133,7 @@ def _build_alert_email(zone, level):
             <div style="margin-top:24px;padding:16px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.05)">
                 <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:8px">Prediction Record</div>
                 <div style="font-size:12px;color:#999;line-height:1.6">
-                    This alert was generated automatically by SeismicLab Tier 1 threat detection at <strong style="color:#ccc">{ts}</strong>.
+                    This alert was generated automatically by QuakeWatch Tier 1 threat detection at <strong style="color:#ccc">{ts}</strong>.
                     Zone <strong style="color:#ccc">{zone['name']}</strong> has crossed the {level.lower()} threshold with a composite threat score of <strong style="color:{level_color}">{score_pct}</strong>.
                     All detector readings at the time of this alert have been logged to the prediction ledger.
                 </div>
@@ -141,7 +141,7 @@ def _build_alert_email(zone, level):
         </div>
 
         <div style="padding:16px 28px;border-top:1px solid rgba(255,255,255,0.04);text-align:center">
-            <a href="http://10.0.0.205:8422" style="color:#5a8abf;font-size:12px;text-decoration:none">Open SeismicLab Dashboard →</a>
+            <a href="http://10.0.0.205:8422" style="color:#5a8abf;font-size:12px;text-decoration:none">Open QuakeWatch Dashboard →</a>
         </div>
     </div>
     """
@@ -240,7 +240,7 @@ class AlertScanner:
 
             if should_alert:
                 try:
-                    subject = f"⚠ SeismicLab {level}: {zone['name']} — {score * 100:.0f}% threat"
+                    subject = f"⚠ QuakeWatch {level}: {zone['name']} — {score * 100:.0f}% threat"
                     html = _build_alert_email(zone, level)
                     await asyncio.to_thread(_send_email, subject, html)
                     self._cooldowns[zone_id] = datetime.now(UTC)

@@ -1,4 +1,4 @@
-"""SeismicLab Tier-1 Threat Detector — multi-signal zone assessment with caching."""
+"""QuakeWatch Tier-1 Threat Detector — multi-signal zone assessment with caching."""
 
 import math
 import sqlite3
@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
-log = logging.getLogger("seismiclab.threat")
+log = logging.getLogger("quakewatch.threat")
 UTC = timezone.utc
 
 M_MIN = 2.5

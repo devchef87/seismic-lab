@@ -1,4 +1,4 @@
-"""SeismicLab — ML training pipeline.
+"""QuakeWatch — ML training pipeline.
 
 Two models:
 1. Magnitude regression: given an earthquake just happened, predict its magnitude
@@ -18,7 +18,7 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
                     datefmt="%H:%M:%S")
-log = logging.getLogger("seismiclab.train")
+log = logging.getLogger("quakewatch.train")
 
 DATA_DIR = Path(__file__).parent / "data"
 

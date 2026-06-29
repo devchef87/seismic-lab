@@ -1,4 +1,4 @@
-"""SeismicLab Prediction Engine — ML-driven earthquake forecasting with tracking.
+"""QuakeWatch Prediction Engine — ML-driven earthquake forecasting with tracking.
 
 Issues structured predictions (zone, timeframe, magnitude, confidence),
 logs them, and scores against actual events to track hit rate.
@@ -12,11 +12,11 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-log = logging.getLogger("seismiclab.prediction_engine")
+log = logging.getLogger("quakewatch.prediction_engine")
 UTC = timezone.utc
 
 MODEL_DIR = Path(__file__).parent / "models"
-PREDICTION_DB = Path(__file__).parent / "data" / "seismiclab.db"
+PREDICTION_DB = Path(__file__).parent / "data" / "quakewatch.db"
 
 # Prediction thresholds (overridden by model metadata if available)
 PREDICT_THRESHOLD = 0.35

@@ -1,4 +1,4 @@
-"""SeismicLab Lab — Solar-Seismic Coupling Analysis
+"""QuakeWatch Lab — Solar-Seismic Coupling Analysis
 
 Test the hypothesis: do geomagnetic storms / solar wind events
 precede large earthquakes more often than expected by chance?
@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 
 UTC = timezone.utc
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 
 
 def get_conn():

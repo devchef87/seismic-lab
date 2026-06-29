@@ -1,4 +1,4 @@
-"""SeismicLab — Real-time earthquake prediction engine.
+"""QuakeWatch — Real-time earthquake prediction engine.
 
 Loads the trained binary classifier and scores current conditions
 for any lat/lon to produce P(M5.0+ within 24h).
@@ -28,7 +28,7 @@ from ingest.features import (
     LOOKBACK_HOURS,
 )
 
-log = logging.getLogger("seismiclab.predict")
+log = logging.getLogger("quakewatch.predict")
 UTC = timezone.utc
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -731,7 +731,7 @@ if __name__ == "__main__":
     if mode == "hotspots":
         results = scan_hotspots()
         print(f"\n{'='*70}")
-        print(f"SeismicLab Global Hotspot Scan — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}")
+        print(f"QuakeWatch Global Hotspot Scan — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}")
         print(f"{'='*70}")
         for r in results:
             score = r["risk_score"]

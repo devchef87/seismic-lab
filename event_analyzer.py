@@ -1,4 +1,4 @@
-"""SeismicLab Event Analyzer — Deterministic seismic event classification and risk scoring.
+"""QuakeWatch Event Analyzer — Deterministic seismic event classification and risk scoring.
 
 Triggers on each M4.5+ event, pulls regional context (aftershock patterns, DART,
 volcanic, tidal, Coulomb stress), computes structured features, and stores
@@ -13,7 +13,7 @@ import numpy as np
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-log = logging.getLogger("seismiclab.event_analyzer")
+log = logging.getLogger("quakewatch.event_analyzer")
 UTC = timezone.utc
 
 MIN_MAGNITUDE = 4.5

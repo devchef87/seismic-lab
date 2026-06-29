@@ -1,4 +1,4 @@
-"""SeismicLab — Server with real-time ingestion, prediction, and streaming dashboard."""
+"""QuakeWatch — Server with real-time ingestion, prediction, and streaming dashboard."""
 
 import asyncio
 import json as json_mod
@@ -21,7 +21,7 @@ from prediction_engine import PredictionEngine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
                     datefmt="%H:%M:%S")
-log = logging.getLogger("seismiclab")
+log = logging.getLogger("quakewatch")
 
 UTC = timezone.utc
 store = QuakeStore()
@@ -37,7 +37,7 @@ DASHBOARD_SIGNALS = [
     ("noaa_swpc", "solar_wind_speed", "Solar Wind", "km/s"),
 ]
 
-app = FastAPI(title="SeismicLab")
+app = FastAPI(title="QuakeWatch")
 dashboard_dir = Path(__file__).parent / "dashboard"
 
 
@@ -549,6 +549,38 @@ async def api_event_analyses(
     return await asyncio.to_thread(analyzer.get_recent, hours, min_risk)
 
 
+@app.get("/api/event-analyses/{earthquake_id}/llm")
+async def api_event_llm_analysis(earthquake_id: str):
+    from llm_analyzer import LLMAnalyzer
+    llm = LLMAnalyzer(store.db_path)
+    text = await asyncio.to_thread(llm.get_analysis, earthquake_id)
+    if text is None:
+        return JSONResponse({"error": "No LLM analysis found"}, status_code=404)
+    return {"earthquake_id": earthquake_id, "analysis": text}
+
+
+@app.get("/api/event-analyses/llm/run/{earthquake_id}")
+async def api_event_llm_run(earthquake_id: str):
+    """Trigger LLM analysis for a specific event on demand."""
+    from event_analyzer import EventAnalyzer
+    from llm_analyzer import LLMAnalyzer
+    analyzer = EventAnalyzer(store.db_path)
+    conn = analyzer._conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM event_analyses WHERE earthquake_id = ?",
+            (earthquake_id,)
+        ).fetchone()
+        if not row:
+            return JSONResponse({"error": "Event analysis not found"}, status_code=404)
+        analysis = dict(row)
+    finally:
+        conn.close()
+    llm = LLMAnalyzer(store.db_path)
+    result = await asyncio.to_thread(llm.analyze, analysis)
+    if result is None:
+        return JSONResponse({"error": "LLM analysis skipped or failed"}, status_code=500)
+    return {"earthquake_id": earthquake_id, "analysis": result}
 
 
 @app.get("/api/seismicity/summary")
@@ -708,6 +740,14 @@ async def api_forecast_explain(zone_id: str):
     _explain_cache[zone_id] = result
     _explain_cache_time[zone_id] = time.monotonic()
     return result
+
+
+@app.get("/api/tier2-watch")
+async def api_tier2_watch():
+    watch_path = Path(__file__).parent / "data" / "tier2_watch.json"
+    if not watch_path.exists():
+        return JSONResponse(content={"generated": None, "base_rate_72h": 0, "n_active_swarms": 0, "watch": []})
+    return JSONResponse(content=json_mod.loads(watch_path.read_text()))
 
 
 @app.get("/api/signals/latest")
@@ -937,7 +977,7 @@ async def startup():
         log.warning(f"EventAnalyzer backfill failed: {e}")
 
 
-    log.info("SeismicLab started — ingestion + alerts + predictions + SeedLink running")
+    log.info("QuakeWatch started — ingestion + alerts + predictions + SeedLink running")
 
 
 if __name__ == "__main__":

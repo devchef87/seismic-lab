@@ -1,4 +1,4 @@
-"""SeismicLab — SQLite storage for time-aligned multi-signal data."""
+"""QuakeWatch — SQLite storage for time-aligned multi-signal data."""
 
 import sqlite3
 import json
@@ -10,9 +10,9 @@ from contextlib import contextmanager
 
 from .sources import Sample
 
-log = logging.getLogger("seismiclab.store")
+log = logging.getLogger("quakewatch.store")
 
-DEFAULT_DB = Path(__file__).parent.parent / "data" / "seismiclab.db"
+DEFAULT_DB = Path(__file__).parent.parent / "data" / "quakewatch.db"
 
 
 class QuakeStore:
@@ -79,13 +79,23 @@ class QuakeStore:
         except Exception as e:
             log.warning(f"EventAnalyzer not available: {e}")
             self._analyzer = None
+        try:
+            from llm_analyzer import LLMAnalyzer
+            self._llm_analyzer = LLMAnalyzer(self.db_path)
+            log.info("LLMAnalyzer initialized — high-risk events get Claude Opus analysis")
+        except Exception as e:
+            log.warning(f"LLMAnalyzer not available: {e}")
+            self._llm_analyzer = None
 
     def _trigger_analysis(self, eq_id, mag, lat, lon, depth_km, place, timestamp):
         if not self._analyzer or mag < 4.5:
             return
         def _run():
             try:
-                self._analyzer.analyze(eq_id, mag, lat, lon, depth_km, place, timestamp)
+                result = self._analyzer.analyze(eq_id, mag, lat, lon, depth_km, place, timestamp)
+                if result and self._llm_analyzer and self._llm_analyzer.should_auto_analyze(
+                        result.get("magnitude", 0), result.get("risk_score", 0)):
+                    self._llm_analyzer.analyze(result)
             except Exception as e:
                 log.error(f"EventAnalyzer failed for {eq_id}: {e}")
         threading.Thread(target=_run, name=f"analyze-{eq_id}", daemon=True).start()
@@ -145,6 +155,31 @@ class QuakeStore:
                                     s.timestamp)
 
         log.info(f"Ingested {source_name}: {new_count} new / {len(samples)} total")
+        return new_count
+
+    def bulk_insert_earthquakes(self, events: list[dict]) -> int:
+        """Direct bulk insert into the earthquakes table for historical backfill.
+
+        Bypasses the live EventAnalyzer / LLM-analysis trigger in ingest() — those
+        are for real-time events, not for backfilling thousands of historical ones.
+        Dedup is by `id` PRIMARY KEY (INSERT OR IGNORE); spatiotemporal dedup against
+        other catalogs must be done by the caller before this point.
+        """
+        new_count = 0
+        batch_size = 1000
+        for i in range(0, len(events), batch_size):
+            batch = events[i:i + batch_size]
+            with self._conn() as conn:
+                for e in batch:
+                    cur = conn.execute("""
+                        INSERT OR IGNORE INTO earthquakes
+                        (id, timestamp, magnitude, depth_km, lat, lon, place, type)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        e["id"], e["timestamp"], e["magnitude"], e.get("depth_km"),
+                        e["lat"], e["lon"], e.get("place", ""), e.get("type", "earthquake"),
+                    ))
+                    new_count += cur.rowcount
         return new_count
 
     def log_ingest(self, source: str, sample_count: int, new_count: int,

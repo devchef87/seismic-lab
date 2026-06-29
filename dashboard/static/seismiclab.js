@@ -689,60 +689,93 @@ function updateSeismicitySummary(data) {
     }
 }
 
-// ── AI Forecast panel ───────────────────────────────────
-function updateForecastPanel(data) {
-    const el = document.getElementById('forecast-list');
+// ── Swarm Watch panel ───────────────────────────────────
+const SW_ZONE_LABELS = {
+    indonesia: 'Indonesia', japan_kurils: 'Japan & Kurils',
+    south_america: 'South America', mexico_ca: 'Mexico & Central America',
+    himalaya: 'Himalaya', alaska: 'Alaska', california: 'California',
+    philippines: 'Philippines', mediterranean: 'Mediterranean',
+    caribbean: 'Caribbean', new_zealand: 'New Zealand',
+    png_solomon: 'PNG & Solomon Islands', kamchatka: 'Kamchatka',
+};
+
+const SW_ALERT_COLORS = {
+    WARNING: 'rgba(220,70,50,0.95)',
+    WATCH: 'rgba(230,160,50,0.95)',
+    ADVISORY: 'rgba(220,200,60,0.9)',
+    NORMAL: 'rgba(160,160,160,0.6)',
+};
+
+let _swarmWatchData = null;
+
+function updateSwarmWatch(data) {
+    _swarmWatchData = data;
+    const el = document.getElementById('sw-list');
     if (!el) return;
 
-    const active = (data.active || []).filter(p => p.probability >= 0.35);
-    const metrics = data.metrics || {};
+    const watch = data.watch || [];
+    const elevated = watch.filter(w => w.alert_level !== 'NORMAL');
+    const normalCount = watch.filter(w => w.alert_level === 'NORMAL').length;
 
-    if (active.length === 0 && !metrics.total_resolved) {
-        el.innerHTML = '<div class="panel-muted">No active forecasts</div>';
+    if (elevated.length === 0) {
+        let html = '<div class="panel-muted">No swarms currently building</div>';
+        if (normalCount > 0) {
+            html += `<div class="sw-baseline-count">${normalCount} active swarms at baseline risk</div>`;
+        }
+        if (data.generated) {
+            const gen = new Date(data.generated.replace(' ', 'T'));
+            const timeStr = gen.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+            html += `<div class="sw-footer">${data.n_active_swarms || 0} swarms · ${timeStr} UTC</div>`;
+        }
+        el.innerHTML = html;
+        updateSwarmPolygons(data);
         return;
     }
 
+    const zoneGroups = {};
+    for (const w of elevated) {
+        if (!zoneGroups[w.zone]) zoneGroups[w.zone] = [];
+        zoneGroups[w.zone].push(w);
+    }
+
+    const sortedZones = Object.entries(zoneGroups)
+        .sort((a, b) => Math.max(...b[1].map(w => w.escalation_prob_72h)) - Math.max(...a[1].map(w => w.escalation_prob_72h)));
+
     let html = '';
+    for (const [zone, cells] of sortedZones) {
+        const maxCell = cells.reduce((a, b) => a.escalation_prob_72h > b.escalation_prob_72h ? a : b);
+        const pct = (maxCell.escalation_prob_72h * 100).toFixed(1);
+        const lift = maxCell.lift_vs_base.toFixed(1);
+        const alertClass = maxCell.alert_level.toLowerCase();
+        const label = SW_ZONE_LABELS[zone] || zone;
+        const totalInZone = watch.filter(w => w.zone === zone).length;
 
-    for (const p of active.slice(0, 5)) {
-        const pct = (p.probability * 100).toFixed(0);
-        const tier = p.probability >= 0.75 ? 'alert' : p.probability >= 0.55 ? 'elevated' : 'watch';
-        const tierLabel = tier === 'alert' ? 'HIGH' : tier === 'elevated' ? 'LIKELY' : 'POSSIBLE';
-        const windowLabel = p.window_hours <= 24 ? '24h' : p.window_hours <= 48 ? '48h' : '72h';
-
-        let topFeats = p.top_features || [];
-        if (typeof topFeats === 'string') {
-            try { topFeats = JSON.parse(topFeats); } catch(e) { topFeats = []; }
-        }
-        const drivers = topFeats.slice(0, 2).map(f => {
-            return f.feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        });
-
-        html += `<div class="forecast-row" data-zone="${p.zone_id}">
-            <div class="forecast-header">
-                <span class="forecast-zone">${p.zone_name}</span>
-                <span class="forecast-tier forecast-tier-${tier}">${tierLabel}</span>
+        html += `<div class="sw-row" data-zone="${zone}">
+            <div class="sw-header">
+                <span class="sw-zone">${label}</span>
+                <span class="sw-alert sw-alert-${alertClass}">${maxCell.alert_level}</span>
             </div>
-            <div class="forecast-detail">M${p.magnitude_est} (${p.magnitude_lo}–${p.magnitude_hi}) within ${windowLabel} — ${pct}% confidence</div>
-            ${drivers.length > 0 ? `<div class="forecast-drivers">${drivers.join(' · ')}</div>` : ''}
+            <div class="sw-detail">${pct}% M5+ in 72h · ${lift}× baseline${totalInZone > 1 ? ` · ${totalInZone} swarms` : ''}</div>
         </div>`;
     }
 
-    if (metrics.total_resolved > 0) {
-        const hitPct = (metrics.hit_rate * 100).toFixed(0);
-        const leadStr = metrics.avg_lead_time_hours ? `${metrics.avg_lead_time_hours.toFixed(0)}h avg lead` : '';
-        const magErr = metrics.avg_magnitude_error ? ` · ±${metrics.avg_magnitude_error.toFixed(1)} mag` : '';
-        html += `<div class="forecast-track-record">
-            <span class="forecast-track-hits">${metrics.hits}/${metrics.total_resolved} hit (${hitPct}%)</span>
-            <span class="forecast-track-detail">${leadStr}${magErr}</span>
-        </div>`;
+    if (normalCount > 0) {
+        html += `<div class="sw-baseline-count">${normalCount} more at baseline risk</div>`;
+    }
+
+    if (data.generated) {
+        const gen = new Date(data.generated.replace(' ', 'T'));
+        const timeStr = gen.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+        html += `<div class="sw-footer">${data.n_active_swarms || 0} swarms · ${timeStr} UTC</div>`;
     }
 
     el.innerHTML = html;
 
-    el.querySelectorAll('.forecast-row[data-zone]').forEach(row => {
-        row.addEventListener('click', () => openForecastDetail(row.dataset.zone));
+    el.querySelectorAll('.sw-row[data-zone]').forEach(row => {
+        row.addEventListener('click', () => openSwarmDetail(row.dataset.zone));
     });
+
+    updateSwarmPolygons(data);
 }
 
 // ── Chart helpers ────────────────────────────────────────
@@ -1747,7 +1780,7 @@ async function openAiAnalysis(eqId, mag, place) {
 
     const termHeader = `<div class="terminal-header">
             <div class="terminal-dots"><div class="terminal-dot active"></div><div class="terminal-dot"></div><div class="terminal-dot"></div></div>
-            <div class="terminal-title">seismiclab — analysis — M${parseFloat(mag).toFixed(1)} ${place}</div>
+            <div class="terminal-title">quakewatch — ai analysis — M${parseFloat(mag).toFixed(1)} ${place}</div>
             <div class="terminal-model">opus-4.6</div>
         </div>`;
     content.innerHTML = termHeader +
@@ -1943,7 +1976,7 @@ function updateStationMarkers(stations) {
         const border = isSelected ? 'border:2px solid rgba(80,200,120,0.9)' : 'border:1px solid rgba(255,255,255,0.3)';
 
         const html = `<div style="width:${size}px;height:${size}px;background:${color};${border};border-radius:2px;${glow};cursor:pointer" title="${stn.name} (${key}) STA/LTA: ${ratio.toFixed(2)}"></div>`;
-        const tipHtml = `<b>${stn.name}</b><br>${key}<br>STA/LTA: ${ratio.toFixed(2)}${triggered ? '<br><span style="color:#dc4632">TRIGGERED</span>' : ''}<br><span style="color:rgba(80,200,120,0.5);font-size:10px">click for seismograph</span>`;
+        const tipHtml = `<b>${stn.name}</b><br>${key}<br>STA/LTA: ${ratio.toFixed(2)}${triggered ? '<br><span style="color:#dc4632">TRIGGERED</span>' : ''}<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.35);font-size:10px">click for seismograph</div>`;
 
         if (state.seismoStation === key) {
             const ampEl = document.getElementById('seismo-amp');
@@ -2106,6 +2139,8 @@ async function fetchWaveform() {
         state.seismoMode = data.mode || 'raw';
         if (data.mode === 'envelope' && data.envelope) {
             state.seismoEnvelope = data.envelope;
+            state.seismoDataSeconds = data.data_seconds || 0;
+            state.seismoWindowSeconds = data.window_seconds || 0;
             drawSeismograph();
         } else if (data.samples && data.samples.length > 0) {
             state.seismoBuffer = data.samples;
@@ -2274,11 +2309,8 @@ function drawEnvelope(ctx, w, h, dpr) {
     const pad = 40 * dpr;
     const padR = 10 * dpr;
     const drawW = w - pad - padR;
-    const windowEntries = {
-        '6h': 720, '12h': 1440, '24h': 2880
-    }[state.seismoScale] || 720;
-    const windowSec = windowEntries * 30;
-    const dataSec = env.length * 30;
+    const windowSec = state.seismoWindowSeconds || ({'6h': 21600, '12h': 43200, '24h': 86400}[state.seismoScale] || 21600);
+    const dataSec = state.seismoDataSeconds > 0 ? state.seismoDataSeconds : (env.length * 30);
     const dataFrac = Math.min(1, dataSec / windowSec);
     const dataStartX = pad + drawW * (1 - dataFrac);
     const maxSNR = SEISMO_FIXED_RANGE;
@@ -2426,7 +2458,7 @@ function drawGenericWaveform(ctx, w, h, dpr, samples, sampleRate, scale) {
     ctx.fillText('NOW', w - padR - 22 * dpr, h - 2 * dpr);
 }
 
-function drawGenericEnvelope(ctx, w, h, dpr, envelope, scale) {
+function drawGenericEnvelope(ctx, w, h, dpr, envelope, scale, apiDataSec, apiWindowSec) {
     if (!envelope || envelope.length < 2) {
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
         ctx.font = `${10 * dpr}px "JetBrains Mono", monospace`;
@@ -2438,9 +2470,8 @@ function drawGenericEnvelope(ctx, w, h, dpr, envelope, scale) {
     const midY = h / 2;
     const pad = 36 * dpr, padR = 8 * dpr;
     const drawW = w - pad - padR;
-    const windowEntries = { '6h': 720, '12h': 1440, '24h': 2880 }[scale] || 720;
-    const windowSec = windowEntries * 30;
-    const dataSec = envelope.length * 30;
+    const windowSec = apiWindowSec || ({'6h': 21600, '12h': 43200, '24h': 86400}[scale] || 21600);
+    const dataSec = apiDataSec > 0 ? apiDataSec : (envelope.length * 30);
     const dataFrac = Math.min(1, dataSec / windowSec);
     const dataStartX = pad + drawW * (1 - dataFrac);
     const maxSNR = SEISMO_FIXED_RANGE;
@@ -2561,6 +2592,8 @@ async function fetchEmbeddedWaveform(containerId) {
         entry.mode = data.mode || 'raw';
         if (data.mode === 'envelope' && data.envelope) {
             entry.envelope = data.envelope;
+            entry.dataSeconds = data.data_seconds || 0;
+            entry.windowSeconds = data.window_seconds || 0;
         } else if (data.samples && data.samples.length > 0) {
             entry.buffer = data.samples;
             entry.sampleRate = data.sample_rate || 5;
@@ -2582,7 +2615,7 @@ function drawEmbeddedSeismo(containerId) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (entry.mode === 'envelope') {
-        drawGenericEnvelope(ctx, canvas.width, canvas.height, dpr, entry.envelope, entry.scale);
+        drawGenericEnvelope(ctx, canvas.width, canvas.height, dpr, entry.envelope, entry.scale, entry.dataSeconds, entry.windowSeconds);
     } else {
         drawGenericWaveform(ctx, canvas.width, canvas.height, dpr, entry.buffer, entry.sampleRate, entry.scale);
     }
@@ -2946,184 +2979,65 @@ async function refreshHeatmap() {
     }
 }
 
-// ── Forecast Detail Overlay ──────────────────────────────
-const FC_CAT_COLORS = {
-    seismic: 'rgba(100,180,255,0.85)', geomag: 'rgba(180,120,255,0.85)',
-    solar: 'rgba(255,180,60,0.85)', tidal: 'rgba(60,200,180,0.85)',
-    tidal_s: 'rgba(60,200,180,0.85)', cosmic: 'rgba(200,200,220,0.7)',
-    thermal: 'rgba(255,120,80,0.85)', ief: 'rgba(220,180,100,0.8)',
-    ground_mag: 'rgba(140,180,220,0.8)', iono: 'rgba(160,220,160,0.8)',
-    physics: 'rgba(100,220,255,0.85)', coupling: 'rgba(255,200,100,0.85)',
-    traj: 'rgba(180,160,220,0.8)', interact: 'rgba(220,160,180,0.8)',
-    volcanic: 'rgba(220,100,60,0.85)', flare: 'rgba(255,160,60,0.85)',
-    cme: 'rgba(255,140,100,0.85)', donki_int: 'rgba(240,180,120,0.8)',
-    other: 'rgba(180,180,180,0.6)',
-};
-
-const _fcCache = {};
-const _fcCacheTime = {};
-const _FC_CACHE_TTL = 120000;
-
-function openForecastDetail(zoneId) {
+// ── Swarm Watch Detail Overlay ──────────────────────────
+function openSwarmDetail(zone) {
+    if (!_swarmWatchData) return;
     const overlay = document.getElementById('fc-overlay');
-    const content = document.getElementById('fc-content');
     overlay.classList.add('open');
 
-    const now = Date.now();
-    if (_fcCache[zoneId] && (now - _fcCacheTime[zoneId]) < _FC_CACHE_TTL) {
-        renderForecastDetail(_fcCache[zoneId]);
+    const cells = _swarmWatchData.watch.filter(w => w.zone === zone);
+    if (cells.length === 0) {
+        document.getElementById('fc-content').innerHTML = '<div class="fc-loading">No data for this zone</div>';
         return;
     }
 
-    content.innerHTML = '<div class="fc-loading">Loading forecast analysis...</div>';
-
-    fetch(`/api/forecast/${encodeURIComponent(zoneId)}/explain`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                content.innerHTML = `<div class="fc-loading">${data.error}</div>`;
-                return;
-            }
-            _fcCache[zoneId] = data;
-            _fcCacheTime[zoneId] = Date.now();
-            renderForecastDetail(data);
-        })
-        .catch(() => {
-            content.innerHTML = '<div class="fc-loading">Failed to load forecast data</div>';
-        });
+    renderSwarmDetail(zone, cells, _swarmWatchData);
 }
 
-function closeForecastDetail() {
+function closeSwarmDetail() {
     stopAllEmbeddedSeismos();
     document.getElementById('fc-overlay').classList.remove('open');
 }
 
-document.getElementById('fc-close')?.addEventListener('click', closeForecastDetail);
+document.getElementById('fc-close')?.addEventListener('click', closeSwarmDetail);
 document.getElementById('fc-overlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'fc-overlay') closeForecastDetail();
+    if (e.target.id === 'fc-overlay') closeSwarmDetail();
 });
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('fc-overlay')?.classList.contains('open')) {
-        closeForecastDetail();
+        closeSwarmDetail();
     }
 });
 
-function renderForecastDetail(d) {
+function renderSwarmDetail(zone, cells, data) {
     const content = document.getElementById('fc-content');
-    const pct = (d.probability * 100).toFixed(0);
-    const tier = d.probability >= 0.75 ? 'high' : d.probability >= 0.55 ? 'likely' : 'possible';
-    const tierLabel = tier === 'high' ? 'HIGH CONFIDENCE' : tier === 'likely' ? 'LIKELY' : 'POSSIBLE';
-    const gaugeColor = 'rgba(255,255,255,0.7)';
+    const label = SW_ZONE_LABELS[zone] || zone;
+    const maxCell = cells.reduce((a, b) => a.escalation_prob_72h > b.escalation_prob_72h ? a : b);
+    const pct = (maxCell.escalation_prob_72h * 100).toFixed(1);
+    const alertClass = maxCell.alert_level.toLowerCase();
+    const baseRate = (data.base_rate_72h * 100).toFixed(1);
+    const gaugeColor = SW_ALERT_COLORS[maxCell.alert_level] || 'rgba(255,255,255,0.7)';
 
     const circumference = 2 * Math.PI * 52;
-    const offset = circumference * (1 - d.probability);
+    const offset = circumference * (1 - maxCell.escalation_prob_72h);
 
-    const expires = new Date(d.expires_at);
-    const now = new Date();
-    const hoursLeft = Math.max(0, (expires - now) / 3600000);
-    const windowStr = `${d.window_hours}h window — ${hoursLeft.toFixed(0)}h remaining`;
+    const allZoneCells = data.watch.filter(w => w.zone === zone);
+    const sortedCells = [...allZoneCells].sort((a, b) => b.escalation_prob_72h - a.escalation_prob_72h);
 
-    const windowPills = Object.entries(d.windows || {})
-        .sort((a, b) => Number(a[0]) - Number(b[0]))
-        .map(([wh, p]) => {
-            const active = Number(wh) === d.window_hours ? ' active' : '';
-            return `<span class="fc-window-pill${active}">${wh}h: ${(p * 100).toFixed(0)}%</span>`;
-        }).join('');
+    let cellsHtml = '';
+    for (const c of sortedCells) {
+        const cPct = (c.escalation_prob_72h * 100).toFixed(1);
+        const cLift = c.lift_vs_base.toFixed(1);
+        const cAlert = c.alert_level.toLowerCase();
+        const latC = ((c.lat_range[0] + c.lat_range[1]) / 2);
+        const lonC = ((c.lon_range[0] + c.lon_range[1]) / 2);
+        const locStr = `${Math.abs(latC).toFixed(0)}°${latC >= 0 ? 'N' : 'S'}, ${Math.abs(lonC).toFixed(0)}°${lonC >= 0 ? 'E' : 'W'}`;
 
-    // Evidence bars
-    const evidence = d.evidence || [];
-    let evidenceHtml = '';
-    for (const ev of evidence) {
-        const valStr = ev.value != null ? ev.value.toFixed(2) : '—';
-        evidenceHtml += `<div class="fc-evidence-row">
-            <div class="fc-ev-label">${ev.label}</div>
-            <div class="fc-ev-bar-track"><div class="fc-ev-bar-fill" style="width:${ev.contribution_pct}%"></div></div>
-            <div class="fc-ev-value">${valStr}</div>
-        </div>`;
-    }
-
-    // Threat signals
-    const threat = d.threat || {};
-    const signals = threat.signals || [];
-    let signalsHtml = '';
-    for (const s of signals) {
-        const sev = s.severity || 0;
-        const dotOpacity = 0.25 + sev * 0.6;
-        signalsHtml += `<div class="fc-signal-row">
-            <div class="fc-signal-dot" style="background:rgba(255,255,255,${dotOpacity.toFixed(2)})"></div>
-            <div class="fc-signal-text">${s.signal}${s.detail ? `<br><span style="color:rgba(255,255,255,0.45);font-size:10px">${s.detail}</span>` : ''}</div>
-            <div class="fc-signal-severity">${(sev * 100).toFixed(0)}%</div>
-        </div>`;
-    }
-    if (signals.length === 0) signalsHtml = '<div style="font-size:11px;color:rgba(255,255,255,0.3)">No active threat signals</div>';
-
-    // Score breakdown
-    let scoresHtml = '';
-    if (threat.score != null) {
-        const items = [
-            ['Foreshock', threat.foreshock_score],
-            ['b-Value', threat.b_score],
-            ['Acceleration', threat.accel_score],
-            ['Sig. Event', threat.sig_event_score],
-        ];
-        for (const [name, val] of items) {
-            scoresHtml += `<div class="fc-score-item">
-                <span class="fc-score-name">${name}</span>
-                <span class="fc-score-val">${val != null ? val.toFixed(3) : '—'}</span>
-            </div>`;
-        }
-    }
-
-    // Boosts
-    let boostsHtml = '';
-    if (threat.score != null) {
-        const boosts = [
-            ['Tidal', threat.tidal_boost],
-            ['Geomag', threat.geomag_boost],
-            ['DART', threat.dart_boost],
-            ['Volcanic', threat.volcanic_boost],
-            ['ML', threat.ml_boost],
-        ];
-        for (const [name, val] of boosts) {
-            const active = val && val > 0 ? ' active' : '';
-            const label = val && val > 0 ? `${name} +${val.toFixed(3)}` : `${name} —`;
-            boostsHtml += `<span class="fc-boost-pill${active}">${label}</span>`;
-        }
-    }
-
-    // Recent seismicity
-    let quakesHtml = '';
-    const quakes = d.recent_seismicity || [];
-    if (quakes.length > 0) {
-        for (const q of quakes.slice(0, 8)) {
-            const t = new Date(q.time);
-            const ago = ((now - t) / 3600000).toFixed(0);
-            quakesHtml += `<div class="fc-quake-row">
-                <span class="fc-quake-mag">M${q.mag.toFixed(1)}</span>
-                <span class="fc-quake-place">${q.place || '—'}</span>
-                <span class="fc-quake-time">${ago}h ago</span>
-            </div>`;
-        }
-    } else {
-        quakesHtml = '<div style="font-size:11px;color:rgba(255,255,255,0.3)">No recent events in zone</div>';
-    }
-
-    // Track record
-    const track = d.zone_track_record || {};
-    const hitRate = track.hit_rate != null ? (track.hit_rate * 100).toFixed(0) + '%' : '—';
-    let historyHtml = '';
-    for (const h of (track.recent || []).slice(0, 8)) {
-        const cls = h.outcome === 'hit' ? 'hit' : h.outcome === 'pending' ? 'pending' : 'miss';
-        const pctH = (h.probability * 100).toFixed(0);
-        const dateStr = h.issued_at ? new Date(h.issued_at).toLocaleDateString('en', {month:'short', day:'numeric'}) : '';
-        const outcomeLabel = h.outcome === 'hit' ? `HIT M${h.actual_mag?.toFixed(1) || '?'} — ${h.lead_time_hours?.toFixed(0) || '?'}h lead`
-            : h.outcome === 'pending' ? 'PENDING'
-            : 'NO EVENT';
-        historyHtml += `<div class="fc-history-row">
-            <span class="fc-history-dot ${cls}"></span>
-            <span>${dateStr}</span>
-            <span style="font-family:'JetBrains Mono',monospace">${pctH}%</span>
-            <span style="flex:1;text-align:right">${outcomeLabel}</span>
+        cellsHtml += `<div class="sw-cell-row">
+            <span class="sw-cell-alert sw-alert sw-alert-${cAlert}">${c.alert_level}</span>
+            <span class="sw-cell-loc">${locStr}</span>
+            <span class="sw-cell-prob">${cPct}%</span>
+            <span class="sw-cell-lift">${cLift}×</span>
         </div>`;
     }
 
@@ -3135,76 +3049,66 @@ function renderForecastDetail(d) {
                     <circle class="fc-gauge-fill" cx="60" cy="60" r="52"
                         stroke="${gaugeColor}"
                         stroke-dasharray="${circumference}"
-                        stroke-dashoffset="${offset}"/>
+                        stroke-dashoffset="${circumference}"/>
                 </svg>
                 <div class="fc-gauge-pct">
-                    ${pct}
+                    ${pct}<span class="fc-gauge-label">%</span>
                 </div>
             </div>
             <div class="fc-hero-info">
-                <div class="fc-hero-zone">${d.zone_name}</div>
-                <div class="fc-hero-mag">M${d.magnitude_est} <span class="fc-hero-mag-range">range ${d.magnitude_lo} – ${d.magnitude_hi}</span></div>
-                <div class="fc-hero-window">${windowStr}</div>
-                <span class="fc-hero-tier fc-tier-${tier}">${tierLabel}</span>
-                <div class="fc-hero-windows">${windowPills}</div>
+                <div class="fc-hero-zone">${label}</div>
+                <div class="sw-hero-question">Active swarm detected — escalation risk</div>
+                <div class="sw-hero-desc">Calibrated probability of M5+ mainshock within 72 hours</div>
+                <span class="sw-hero-alert sw-alert sw-alert-${alertClass}">${maxCell.alert_level}</span>
+                <div class="sw-hero-lift">${maxCell.lift_vs_base.toFixed(1)}× baseline (baseline: ${baseRate}%)</div>
             </div>
         </div>
-
-        ${(d.trend && d.trend.length >= 2) ? `
-        <div class="fc-section">
-            <div class="fc-section-title">Probability Trend</div>
-            <div class="fc-trend-wrap">
-                <canvas id="fc-trend-canvas" class="fc-trend-canvas"></canvas>
-                <div class="fc-trend-labels">
-                    <span class="fc-trend-label-left" id="fc-trend-t0"></span>
-                    <span class="fc-trend-label-right" id="fc-trend-t1"></span>
-                </div>
-            </div>
-        </div>` : ''}
 
         <div class="fc-grid">
             <div class="fc-main">
                 <div class="fc-section">
-                    <div class="fc-section-title">Evidence — What's Driving This Prediction</div>
-                    <div class="fc-evidence-list">${evidenceHtml}</div>
+                    <div class="fc-section-title">Active Swarm Cells (${allZoneCells.length})</div>
+                    <div class="sw-cells-list">${cellsHtml}</div>
                 </div>
 
                 <div class="fc-section">
-                    <div class="fc-section-title">Active Signals</div>
-                    <div class="fc-signal-list">${signalsHtml}</div>
-                </div>
-
-                <div class="fc-section">
-                    <div class="fc-section-title">Recent Seismicity (72h)</div>
-                    <div class="fc-quake-list">${quakesHtml}</div>
+                    <div class="fc-section-title">What This Means</div>
+                    <div class="sw-context">
+                        <div class="sw-context-item">~94% of active swarms fizzle without producing a large event</div>
+                        <div class="sw-context-item">This model identifies the ~6% that escalate to M5+ mainshocks</div>
+                        <div class="sw-context-item">Probabilities are calibrated — ${pct}% means approximately ${pct}% actually escalate</div>
+                        <div class="sw-context-item">${maxCell.alert_level} is a heightened watch posture, not a certainty</div>
+                    </div>
                 </div>
             </div>
 
             <div class="fc-side">
-                ${scoresHtml ? `<div class="fc-section">
-                    <div class="fc-section-title">Threat Components</div>
-                    <div class="fc-scores">${scoresHtml}</div>
-                    <div class="fc-boosts">${boostsHtml}</div>
-                </div>` : ''}
-
                 <div class="fc-section">
-                    <div class="fc-section-title">Zone Track Record</div>
-                    <div class="fc-track">
-                        <div class="fc-track-stat">
-                            <div class="fc-track-num">${hitRate}</div>
-                            <div class="fc-track-label">Hit Rate</div>
+                    <div class="fc-section-title">Calibration Context</div>
+                    <div class="sw-calibration">
+                        <div class="sw-cal-row">
+                            <span class="sw-cal-label">Baseline (any swarm)</span>
+                            <span class="sw-cal-val">${baseRate}%</span>
                         </div>
-                        <div class="fc-track-stat">
-                            <div class="fc-track-num">${track.total || 0}</div>
-                            <div class="fc-track-label">Resolved</div>
+                        <div class="sw-cal-row">
+                            <span class="sw-cal-label">This cell</span>
+                            <span class="sw-cal-val">${pct}%</span>
                         </div>
-                        <div class="fc-track-stat">
-                            <div class="fc-track-num">${track.hits || 0}</div>
-                            <div class="fc-track-label">Hits</div>
+                        <div class="sw-cal-row">
+                            <span class="sw-cal-label">Lift vs baseline</span>
+                            <span class="sw-cal-val">${maxCell.lift_vs_base.toFixed(1)}×</span>
                         </div>
                     </div>
-                    ${historyHtml ? `<div class="fc-section-title" style="margin-top:4px">History</div>
-                    <div class="fc-history-list">${historyHtml}</div>` : ''}
+                </div>
+
+                <div class="fc-section">
+                    <div class="fc-section-title">Alert Levels</div>
+                    <div class="sw-alert-legend">
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-warning">WARNING</span><span>≥30% — act on this</span></div>
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-watch">WATCH</span><span>Top 5% — notably elevated</span></div>
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-advisory">ADVISORY</span><span>Top 20% — worth watching</span></div>
+                        <div class="sw-legend-row"><span class="sw-alert sw-alert-normal">NORMAL</span><span>Baseline risk</span></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3216,113 +3120,108 @@ function renderForecastDetail(d) {
     requestAnimationFrame(() => {
         const fill = content.querySelector('.fc-gauge-fill');
         if (fill) fill.style.strokeDashoffset = offset;
-        if (d.trend && d.trend.length >= 2) drawForecastTrend(d.trend);
 
-        const fcLat = d.center?.[0];
-        const fcLon = d.center?.[1];
-        if (fcLat != null && fcLon != null) {
-            const nearest = findNearestStations(fcLat, fcLon, 2);
-            const section = document.getElementById('fc-seismo-section');
-            if (nearest.length > 0 && section) {
-                let html = '<div class="fc-section-title">Nearest Stations — Live Seismograph</div>';
-                for (let i = 0; i < nearest.length; i++) {
-                    html += `<div class="embedded-seismo-wrap" id="fc-seismo-${i}"></div>`;
-                }
-                section.innerHTML = html;
-                for (let i = 0; i < nearest.length; i++) {
-                    startEmbeddedSeismo(`fc-seismo-${i}`, nearest[i].station, nearest[i].name, '6h');
-                }
+        const avgLat = allZoneCells.reduce((s, c) => s + (c.lat_range[0] + c.lat_range[1]) / 2, 0) / allZoneCells.length;
+        const avgLon = allZoneCells.reduce((s, c) => s + (c.lon_range[0] + c.lon_range[1]) / 2, 0) / allZoneCells.length;
+        const nearest = findNearestStations(avgLat, avgLon, 2);
+        const section = document.getElementById('fc-seismo-section');
+        if (nearest.length > 0 && section) {
+            let html = '<div class="fc-section-title">Nearest Stations — Live Seismograph</div>';
+            for (let i = 0; i < nearest.length; i++) {
+                html += `<div class="embedded-seismo-wrap" id="fc-seismo-${i}"></div>`;
+            }
+            section.innerHTML = html;
+            for (let i = 0; i < nearest.length; i++) {
+                startEmbeddedSeismo(`fc-seismo-${i}`, nearest[i].station, nearest[i].name, '6h');
             }
         }
     });
 }
 
-function drawForecastTrend(trend) {
-    const canvas = document.getElementById('fc-trend-canvas');
-    if (!canvas || !trend || trend.length < 2) return;
+function updateSwarmPolygons(data) {
+    if (!mapReady) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const w = rect.width, h = rect.height;
-    if (w === 0 || h === 0) return;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+    const features = (data.watch || []).map(w => ({
+        type: 'Feature',
+        properties: {
+            cell: w.cell,
+            zone: w.zone,
+            alert_level: w.alert_level,
+            prob: w.escalation_prob_72h,
+            lift: w.lift_vs_base,
+        },
+        geometry: {
+            type: 'Polygon',
+            coordinates: [[
+                [w.lon_range[0], w.lat_range[0]],
+                [w.lon_range[1], w.lat_range[0]],
+                [w.lon_range[1], w.lat_range[1]],
+                [w.lon_range[0], w.lat_range[1]],
+                [w.lon_range[0], w.lat_range[0]],
+            ]]
+        }
+    }));
 
-    const pad = { top: 16, right: 12, bottom: 4, left: 32 };
-    const cw = w - pad.left - pad.right;
-    const ch = h - pad.top - pad.bottom;
+    const geojson = { type: 'FeatureCollection', features };
 
-    const probs = trend.map(t => t.p);
-    const yMax = Math.max(1, Math.ceil(Math.max(...probs) * 100 / 10) * 10) / 100;
-    const yMin = 0;
+    if (map.getSource('swarm-cells')) {
+        map.getSource('swarm-cells').setData(geojson);
+    } else {
+        map.addSource('swarm-cells', { type: 'geojson', data: geojson });
+        map.addLayer({
+            id: 'swarm-cells-fill',
+            type: 'fill',
+            source: 'swarm-cells',
+            paint: {
+                'fill-color': [
+                    'match', ['get', 'alert_level'],
+                    'WARNING', 'rgba(220,70,50,0.15)',
+                    'WATCH', 'rgba(230,160,50,0.12)',
+                    'ADVISORY', 'rgba(220,200,60,0.1)',
+                    'rgba(160,160,160,0.03)'
+                ],
+                'fill-opacity': 0.7,
+            }
+        });
+        map.addLayer({
+            id: 'swarm-cells-border',
+            type: 'line',
+            source: 'swarm-cells',
+            paint: {
+                'line-color': [
+                    'match', ['get', 'alert_level'],
+                    'WARNING', 'rgba(220,70,50,0.6)',
+                    'WATCH', 'rgba(230,160,50,0.5)',
+                    'ADVISORY', 'rgba(220,200,60,0.35)',
+                    'rgba(160,160,160,0.1)'
+                ],
+                'line-width': 1,
+            }
+        });
 
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    const gridSteps = [0.25, 0.5, 0.75];
-    for (const step of gridSteps) {
-        if (step > yMax) continue;
-        const gy = pad.top + ch * (1 - (step - yMin) / (yMax - yMin));
-        ctx.beginPath();
-        ctx.moveTo(pad.left, gy);
-        ctx.lineTo(pad.left + cw, gy);
-        ctx.stroke();
-
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.font = '9px JetBrains Mono';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${(step * 100).toFixed(0)}%`, pad.left - 6, gy + 3);
+        const swarmPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '240px' });
+        map.on('mousemove', 'swarm-cells-fill', (e) => {
+            if (!e.features || !e.features.length) return;
+            map.getCanvas().style.cursor = 'pointer';
+            const f = e.features[0].properties;
+            const zone = SW_ZONE_LABELS[f.zone] || f.zone;
+            const pct = (f.prob * 100).toFixed(1);
+            const lift = Number(f.lift).toFixed(1);
+            const color = SW_ALERT_COLORS[f.alert_level] || 'rgba(255,255,255,0.6)';
+            swarmPopup.setLngLat(e.lngLat)
+                .setHTML(`<div style="font-size:11px"><b>${zone}</b><br><span style="color:${color};font-weight:600">${f.alert_level}</span> · ${pct}% M5+ in 72h · ${lift}× baseline</div>`)
+                .addTo(map);
+        });
+        map.on('mouseleave', 'swarm-cells-fill', () => {
+            map.getCanvas().style.cursor = '';
+            swarmPopup.remove();
+        });
+        map.on('click', 'swarm-cells-fill', (e) => {
+            if (!e.features || !e.features.length) return;
+            const zone = e.features[0].properties.zone;
+            if (zone) openSwarmDetail(zone);
+        });
     }
-
-    // Threshold line at 35%
-    const threshY = pad.top + ch * (1 - (0.35 - yMin) / (yMax - yMin));
-    if (threshY > pad.top && threshY < pad.top + ch) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(pad.left, threshY);
-        ctx.lineTo(pad.left + cw, threshY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    }
-
-    // Line
-    ctx.beginPath();
-    for (let i = 0; i < trend.length; i++) {
-        const x = pad.left + (i / (trend.length - 1)) * cw;
-        const y = pad.top + ch * (1 - (trend[i].p - yMin) / (yMax - yMin));
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    // Fill under
-    const lastX = pad.left + cw;
-    const lastY = pad.top + ch * (1 - (trend[trend.length - 1].p - yMin) / (yMax - yMin));
-    ctx.lineTo(lastX, pad.top + ch);
-    ctx.lineTo(pad.left, pad.top + ch);
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
-    grad.addColorStop(0, 'rgba(255,255,255,0.08)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Current value dot
-    ctx.beginPath();
-    ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fill();
-
-    // Time labels
-    const t0 = document.getElementById('fc-trend-t0');
-    const t1 = document.getElementById('fc-trend-t1');
-    if (t0) t0.textContent = new Date(trend[0].t).toLocaleDateString('en', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-    if (t1) t1.textContent = new Date(trend[trend.length - 1].t).toLocaleDateString('en', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
 }
 
 // ── SSE Stream ───────────────────────────────────────────
@@ -3413,11 +3312,11 @@ function connectStream() {
         } catch (err) { console.error('SeedLink parse:', err); }
     });
 
-    es.addEventListener('forecast', (e) => {
+    es.addEventListener('tier2-watch', (e) => {
         try {
             const data = JSON.parse(e.data);
-            updateForecastPanel(data);
-        } catch (err) { console.error('Forecast parse:', err); }
+            updateSwarmWatch(data);
+        } catch (err) { console.error('Swarm watch parse:', err); }
     });
 
     es.onopen = () => {
@@ -3578,10 +3477,7 @@ async function init() {
         fetch('/api/tidal/sensitivity').then(r => r.ok ? r.json() : null).then(d => d && updateTidalRipples(d)).catch(() => {}),
         fetch('/api/volcanic/activity').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateVolcanicSummary(d); updateVolcanoMarkers(d); } }).catch(() => {}),
         fetch('/api/seedlink/stations').then(r => r.ok ? r.json() : null).then(d => { if (d) updateStationMarkers(d); }).catch(() => {}),
-        Promise.all([fetch('/api/forecast/active'), fetch('/api/forecast/metrics')])
-            .then(async ([ar, mr]) => {
-                if (ar.ok && mr.ok) updateForecastPanel({ active: await ar.json(), metrics: await mr.json() });
-            }).catch(() => {}),
+        fetch('/api/tier2-watch').then(r => r.ok ? r.json() : null).then(d => { if (d) updateSwarmWatch(d); }).catch(() => {}),
     ]);
     setInterval(refreshFaultRisk, CONFIG.FAULT_RISK_INTERVAL);
     setInterval(refreshHeatmap, CONFIG.HEATMAP_INTERVAL);
@@ -3591,6 +3487,12 @@ async function init() {
             if (resp.ok) updateSeismicitySummary(await resp.json());
         } catch (e) {}
     }, 60000);
+    setInterval(async () => {
+        try {
+            const resp = await fetch('/api/tier2-watch');
+            if (resp.ok) updateSwarmWatch(await resp.json());
+        } catch (e) {}
+    }, 300000);
 
     const savedMag = localStorage.getItem('qw_filterMag');
     const savedHours = localStorage.getItem('qw_filterHours');

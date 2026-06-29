@@ -1,4 +1,4 @@
-"""SeismicLab Lab — NOAA DART Tsunami Buoy Ingestion
+"""QuakeWatch Lab — NOAA DART Tsunami Buoy Ingestion
 
 Pull deep-ocean bottom pressure recorder data from NOAA NDBC.
 DART buoys measure seafloor pressure at mm resolution — detects:
@@ -37,7 +37,7 @@ except ImportError:
 
 UTC = timezone.utc
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 
 NDBC_REALTIME = "https://www.ndbc.noaa.gov/data/realtime2"
 NDBC_HISTORICAL = "https://www.ndbc.noaa.gov/data/historical/dart"
@@ -297,7 +297,7 @@ def _send_dart_alert(alerts):
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-        from alerts import _load_env, _send_email
+        from quakewatch.alerts import _load_env, _send_email
         _load_env()
 
         lines = []
@@ -332,7 +332,7 @@ def _send_dart_alert(alerts):
         """
         subject = f"DART Alert: {len(alerts)} buoy(s) in {level} mode"
         _send_email(subject, html)
-        print(f"  Alert email sent to {os.environ.get('ALERT_RECIPIENT', '')}")
+        print(f"  Alert email sent to {os.environ.get('RECIPIENT', 'ryan@axomlabs.ai')}")
     except Exception as e:
         print(f"  Warning: failed to send alert email: {e}")
 

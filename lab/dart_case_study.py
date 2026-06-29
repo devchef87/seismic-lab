@@ -1,4 +1,4 @@
-"""SeismicLab Lab — DART Case Study Analysis
+"""QuakeWatch Lab — DART Case Study Analysis
 
 Analyze DART buoy pressure signals before M6.5+ earthquakes.
 Tests hypothesis: pre-seismic deformation creates a compression→extension
@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore")
 
 UTC = timezone.utc
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "data", "seismiclab.db")
+                       "data", "quakewatch.db")
 
 
 def get_conn():
