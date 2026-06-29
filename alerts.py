@@ -16,10 +16,10 @@ from googleapiclient.discovery import build
 log = logging.getLogger("quakewatch.alerts")
 UTC = timezone.utc
 
-ENV_PATH = Path("/home/axom/Desktop/Axom/.env")
+ENV_PATH = Path(os.environ.get("ENV_PATH", Path(__file__).parent / ".env"))
 PREDICTION_LOG = Path(__file__).parent / "data" / "predictions.jsonl"
-SENDER = "support@motovizion.com"
-RECIPIENT = "ryan@axomlabs.ai"
+SENDER = os.environ.get("ALERT_EMAIL_FROM", "")
+RECIPIENT = os.environ.get("ALERT_EMAIL_TO", "")
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 ESCALATE_THRESHOLD = 0.60

@@ -876,7 +876,7 @@ def fetch_proton_flux() -> list[Sample]:
 # FIRMS — Near Real-Time Satellite Thermal Anomalies
 # ---------------------------------------------------------------------------
 
-FIRMS_KEY = os.environ.get("FIRMS_API_KEY", "7d3b0c8a4cedad8718cf83afa7e466e5")
+FIRMS_KEY = os.environ.get("FIRMS_API_KEY", "")
 FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 _FIRMS_DB = Path(__file__).parent.parent / "data" / "quakewatch.db"
 
