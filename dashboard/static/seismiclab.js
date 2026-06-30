@@ -2547,7 +2547,7 @@ function showEqDetail(eq) {
             <div><div class="detail-label">Coords</div><div class="detail-value">${eq.lat.toFixed(2)}, ${eq.lon.toFixed(2)}</div></div>
             <div><div class="detail-label">UTC</div><div class="detail-value">${new Date(eq.timestamp).toISOString().slice(11,16)}</div></div>
         </div>
-        <button class="detail-predict-btn" data-lat="${eq.lat}" data-lon="${eq.lon}" data-name="${place}">Run prediction</button>
+        <button class="detail-predict-btn" data-lat="${eq.lat}" data-lon="${eq.lon}" data-name="${place}">Analyze region</button>
     `;
     el.classList.add('visible');
 }
@@ -3537,6 +3537,236 @@ async function loadIonosphere() {
     }
 }
 
+// ── Weather Layers ───────────────────────────────────────
+const WX_EVENT_COLORS = {
+    'Tornado Warning':              { fill: 'rgba(255,60,120,0.12)',  line: 'rgba(255,60,120,0.9)',  pulse: true },
+    'Tornado Watch':                { fill: 'rgba(255,60,120,0.06)',  line: 'rgba(255,60,120,0.4)',  pulse: false },
+    'Severe Thunderstorm Warning':  { fill: 'rgba(255,120,170,0.10)', line: 'rgba(255,120,170,0.8)', pulse: true },
+    'Severe Thunderstorm Watch':    { fill: 'rgba(255,120,170,0.05)', line: 'rgba(255,120,170,0.35)',pulse: false },
+    'Hurricane Warning':            { fill: 'rgba(180,120,255,0.12)', line: 'rgba(180,120,255,0.9)', pulse: true },
+    'Hurricane Watch':              { fill: 'rgba(180,120,255,0.06)', line: 'rgba(180,120,255,0.4)', pulse: false },
+    'Tropical Storm Warning':       { fill: 'rgba(180,120,255,0.10)', line: 'rgba(180,120,255,0.7)', pulse: true },
+    'Tropical Storm Watch':         { fill: 'rgba(180,120,255,0.05)', line: 'rgba(180,120,255,0.35)',pulse: false },
+    'Flash Flood Warning':          { fill: 'rgba(90,200,255,0.10)',  line: 'rgba(90,200,255,0.8)',  pulse: true },
+    'Flash Flood Watch':            { fill: 'rgba(90,200,255,0.05)',  line: 'rgba(90,200,255,0.35)', pulse: false },
+    'Storm Surge Warning':          { fill: 'rgba(90,200,255,0.12)',  line: 'rgba(90,200,255,0.9)',  pulse: true },
+    'Storm Surge Watch':            { fill: 'rgba(90,200,255,0.06)',  line: 'rgba(90,200,255,0.4)',  pulse: false },
+};
+const WX_DEFAULT_COLOR = { fill: 'rgba(255,120,170,0.08)', line: 'rgba(255,120,170,0.5)', pulse: false };
+
+const SPC_RISK_COLORS = {
+    'TSTM': { fill: 'rgba(80,160,80,0.05)',  line: 'rgba(80,160,80,0.3)' },
+    'MRGL': { fill: 'rgba(80,160,80,0.07)',  line: 'rgba(80,160,80,0.45)' },
+    'SLGT': { fill: 'rgba(220,170,0,0.08)',   line: 'rgba(220,170,0,0.5)' },
+    'ENH':  { fill: 'rgba(230,130,30,0.09)',  line: 'rgba(230,130,30,0.55)' },
+    'MDT':  { fill: 'rgba(220,60,40,0.10)',   line: 'rgba(220,60,40,0.6)' },
+    'HIGH': { fill: 'rgba(255,60,120,0.12)',  line: 'rgba(255,60,120,0.7)' },
+};
+
+let _wxRadarFrame = 0;
+let _wxRadarTimer = null;
+
+async function loadWeatherWarnings() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/weather/alerts');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.error) return;
+        const feats = data.features || [];
+
+        const countEl = document.getElementById('wx-warn-count');
+        if (countEl) countEl.textContent = feats.length || '';
+
+        for (const f of feats) {
+            const ev = f.properties.event || '';
+            const c = WX_EVENT_COLORS[ev] || WX_DEFAULT_COLOR;
+            f.properties._fill = c.fill;
+            f.properties._line = c.line;
+            f.properties._pulse = c.pulse ? 1 : 0;
+            f.properties._dasharray = ev.includes('Watch') ? '6,4' : '0,0';
+        }
+
+        const geojson = { type: 'FeatureCollection', features: feats };
+        if (map.getSource('wx-warnings')) {
+            map.getSource('wx-warnings').setData(geojson);
+        } else {
+            map.addSource('wx-warnings', { type: 'geojson', data: geojson });
+            map.addLayer({
+                id: 'wx-warnings-fill', type: 'fill', source: 'wx-warnings',
+                paint: { 'fill-color': ['get', '_fill'], 'fill-opacity': 1 },
+            }, 'plate-boundaries');
+            map.addLayer({
+                id: 'wx-warnings-line', type: 'line', source: 'wx-warnings',
+                paint: {
+                    'line-color': ['get', '_line'],
+                    'line-width': 1.5,
+                    'line-opacity': ['case', ['==', ['get', '_pulse'], 1], 0.9, 0.5],
+                },
+                layout: { 'line-cap': 'round' },
+            }, 'plate-boundaries');
+
+            map.on('click', 'wx-warnings-fill', (e) => {
+                if (e.originalEvent.target !== map.getCanvas()) return;
+                const f = e.features[0];
+                if (!f) return;
+                const p = f.properties;
+                const ev = p.event || 'Weather Alert';
+                const c = WX_EVENT_COLORS[ev] || WX_DEFAULT_COLOR;
+                const pillColor = c.line;
+                new maplibregl.Popup({ className: 'wx-popup', maxWidth: '320px' })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div style="font-family:Inter,sans-serif;color:rgba(255,255,255,0.9)">
+                            <div style="display:inline-block;padding:2px 8px;border-radius:3px;background:${pillColor};font-size:11px;font-weight:600;letter-spacing:0.5px;margin-bottom:6px">${ev.toUpperCase()}</div>
+                            <div style="font-size:12px;line-height:1.4;margin-top:4px;color:rgba(255,255,255,0.75)">${p.headline || ''}</div>
+                            <div style="font-size:11px;margin-top:4px;color:rgba(255,255,255,0.5)">${p.areaDesc || ''}</div>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+            map.on('mouseenter', 'wx-warnings-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+            map.on('mouseleave', 'wx-warnings-fill', () => { map.getCanvas().style.cursor = ''; });
+        }
+    } catch (e) { console.error('Weather warnings:', e); }
+}
+
+async function loadWeatherRadar() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/weather/radar');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.error || !data.radar) return;
+
+        const frames = data.radar.past || [];
+        if (!frames.length) return;
+        const host = data.host;
+
+        if (map.getSource('wx-radar-0')) {
+            return;
+        }
+
+        // last ~8 frames: snappier loop, fewer layers. 512px tiles + nearest resampling
+        // = crisp (not blurry). Inactive frames stay at 0.01 opacity (not 0) so MapLibre
+        // never evicts their tiles — kills the "disappears for a few seconds" reload gap.
+        const recent = frames.slice(-8);
+        const ACTIVE = 0.6, KEEP = 0.01;
+        recent.forEach((frame, i) => {
+            const url = `${host}${frame.path}/512/{z}/{x}/{y}/8/1_1.png`;
+            map.addSource(`wx-radar-${i}`, { type: 'raster', tiles: [url], tileSize: 512 });
+            map.addLayer({
+                id: `wx-radar-${i}`, type: 'raster', source: `wx-radar-${i}`,
+                paint: {
+                    'raster-opacity': i === recent.length - 1 ? ACTIVE : KEEP,
+                    'raster-opacity-transition': { duration: 200 },  // smooth crossfade
+                    'raster-resampling': 'nearest',                  // crisp, not blurry
+                    'raster-fade-duration': 0,                       // no tile-load fade flicker
+                },
+                layout: { visibility: 'visible' },
+            }, 'plate-boundaries');
+        });
+
+        _wxRadarFrame = recent.length - 1;
+        _wxRadarTimer = setInterval(() => {
+            const prev = _wxRadarFrame;
+            _wxRadarFrame = (_wxRadarFrame + 1) % recent.length;
+            try {
+                map.setPaintProperty(`wx-radar-${prev}`, 'raster-opacity', KEEP);
+                map.setPaintProperty(`wx-radar-${_wxRadarFrame}`, 'raster-opacity', ACTIVE);
+            } catch(e) {}
+        }, 650);
+    } catch (e) { console.error('Weather radar:', e); }
+}
+
+function stopWeatherRadar() {
+    if (_wxRadarTimer) { clearInterval(_wxRadarTimer); _wxRadarTimer = null; }
+}
+
+async function loadWeatherOutlook() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/weather/outlook');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.error) return;
+        const feats = (data.features || []).filter(f => f.geometry);
+
+        for (const f of feats) {
+            const label = f.properties.LABEL || '';
+            const c = SPC_RISK_COLORS[label] || SPC_RISK_COLORS['TSTM'];
+            f.properties._fill = c.fill;
+            f.properties._line = c.line;
+        }
+
+        const geojson = { type: 'FeatureCollection', features: feats };
+        if (map.getSource('wx-outlook')) {
+            map.getSource('wx-outlook').setData(geojson);
+        } else {
+            map.addSource('wx-outlook', { type: 'geojson', data: geojson });
+            map.addLayer({
+                id: 'wx-outlook-fill', type: 'fill', source: 'wx-outlook',
+                paint: { 'fill-color': ['get', '_fill'], 'fill-opacity': 1 },
+            }, 'plate-boundaries');
+            map.addLayer({
+                id: 'wx-outlook-line', type: 'line', source: 'wx-outlook',
+                paint: { 'line-color': ['get', '_line'], 'line-width': 1.2, 'line-opacity': 0.7 },
+                layout: { 'line-cap': 'round' },
+            }, 'plate-boundaries');
+
+            map.on('click', 'wx-outlook-fill', (e) => {
+                if (e.originalEvent.target !== map.getCanvas()) return;
+                const f = e.features[0];
+                if (!f) return;
+                const p = f.properties;
+                const label = p.LABEL2 || p.LABEL || 'Outlook';
+                const c = SPC_RISK_COLORS[p.LABEL] || SPC_RISK_COLORS['TSTM'];
+                new maplibregl.Popup({ className: 'wx-popup', maxWidth: '280px' })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div style="font-family:Inter,sans-serif;color:rgba(255,255,255,0.9)">
+                            <div style="display:inline-block;padding:2px 8px;border-radius:3px;background:${c.line};font-size:11px;font-weight:600;letter-spacing:0.5px">${label.toUpperCase()}</div>
+                            <div style="font-size:11px;margin-top:6px;color:rgba(255,255,255,0.5)">SPC Day 1 Convective Outlook</div>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+        }
+    } catch (e) { console.error('Weather outlook:', e); }
+}
+
+async function loadWeatherHurricanes() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/weather/hurricanes');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.error) return;
+        const storms = data.activeStorms || [];
+
+        const countEl = document.getElementById('wx-hurricane-count');
+        if (countEl) countEl.textContent = storms.length || '';
+
+        for (const key of Object.keys(state._hurricaneMarkers || {})) {
+            state._hurricaneMarkers[key].remove();
+        }
+        state._hurricaneMarkers = {};
+
+        for (const storm of storms) {
+            if (!storm.latitudeNumeric || !storm.longitudeNumeric) continue;
+            const el = document.createElement('div');
+            el.className = 'wx-hurricane-marker';
+            el.innerHTML = `<div class="wx-hurricane-glyph"></div><div class="wx-hurricane-label">${storm.name || ''}</div>`;
+            const marker = new maplibregl.Marker({ element: el })
+                .setLngLat([storm.longitudeNumeric, storm.latitudeNumeric])
+                .addTo(map);
+            state._hurricaneMarkers[storm.id || storm.name] = marker;
+        }
+    } catch (e) { console.error('Weather hurricanes:', e); }
+}
+
+state._hurricaneMarkers = {};
+
 // ── Map Legend ────────────────────────────────────────────
 (function initLegend() {
     const legendEl = document.getElementById('map-legend');
@@ -3568,6 +3798,10 @@ async function loadIonosphere() {
         'volc-elevated': false,
         'volc-active': false,
         ionosphere: false,
+        'wx-radar': false,
+        'wx-warnings': false,
+        'wx-outlook': false,
+        'wx-hurricanes': false,
     };
 
     function setMarkerVisibility(markers, visible) {
@@ -3615,6 +3849,41 @@ async function loadIonosphere() {
                     map.setLayoutProperty('iono-heatmap', 'visibility', on ? 'visible' : 'none');
                 } catch(e) {}
                 if (on && !map.getSource('iono-tec')) loadIonosphere();
+                break;
+            case 'wx-warnings':
+                if (on && !map.getSource('wx-warnings')) { loadWeatherWarnings(); }
+                try {
+                    map.setLayoutProperty('wx-warnings-fill', 'visibility', on ? 'visible' : 'none');
+                    map.setLayoutProperty('wx-warnings-line', 'visibility', on ? 'visible' : 'none');
+                } catch(e) {}
+                break;
+            case 'wx-radar':
+                if (on && !map.getSource('wx-radar-0')) { loadWeatherRadar(); }
+                else if (!on) { stopWeatherRadar(); }
+                if (map.getSource('wx-radar-0')) {
+                    let i = 0;
+                    while (map.getSource(`wx-radar-${i}`)) {
+                        try { map.setLayoutProperty(`wx-radar-${i}`, 'visibility', on ? 'visible' : 'none'); } catch(e) {}
+                        i++;
+                    }
+                    if (on && !_wxRadarTimer) loadWeatherRadar();
+                }
+                break;
+            case 'wx-outlook':
+                if (on && !map.getSource('wx-outlook')) { loadWeatherOutlook(); }
+                try {
+                    map.setLayoutProperty('wx-outlook-fill', 'visibility', on ? 'visible' : 'none');
+                    map.setLayoutProperty('wx-outlook-line', 'visibility', on ? 'visible' : 'none');
+                } catch(e) {}
+                break;
+            case 'wx-hurricanes':
+                if (on) { loadWeatherHurricanes(); }
+                else {
+                    for (const key of Object.keys(state._hurricaneMarkers || {})) {
+                        state._hurricaneMarkers[key].remove();
+                    }
+                    state._hurricaneMarkers = {};
+                }
                 break;
             case 'volc-high':
             case 'volc-elevated':
