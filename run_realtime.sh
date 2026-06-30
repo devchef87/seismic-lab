@@ -22,7 +22,10 @@ SERVICES=(
 )
 
 start() {
-  if [ -f "$PIDFILE" ]; then echo "already started (see: $0 status). stop first."; exit 1; fi
+  if [ -f "$PIDFILE" ]; then
+    while read -r _n p; do kill -0 "$p" 2>/dev/null && { echo "already started (see: $0 status). stop first."; exit 1; }; done < "$PIDFILE"
+    rm -f "$PIDFILE"   # stale pidfile (e.g. after reboot/crash) — clear and restart
+  fi
   command -v "$PY" >/dev/null || { echo "python not found ($PY). set PYTHON=..."; exit 1; }
   [ -f "$HERE/models/tier2_watch_lgb.txt" ] || { echo "model bundle missing — train first (see QUICKSTART.md)"; exit 1; }
   : > "$PIDFILE"
@@ -50,10 +53,29 @@ status() {
   done < "$PIDFILE"
 }
 
+ensure() {  # (re)start only services that aren't running — idempotent, for a watchdog cron
+  command -v "$PY" >/dev/null || exit 1
+  [ -f "$HERE/models/tier2_watch_lgb.txt" ] || exit 1
+  declare -A alive
+  [ -f "$PIDFILE" ] && while read -r n p; do kill -0 "$p" 2>/dev/null && alive[$n]="$p"; done < "$PIDFILE"
+  : > "$PIDFILE.tmp"
+  for s in "${SERVICES[@]}"; do
+    name="${s%%|*}"; cmd="${s#*|}"
+    if [ -n "${alive[$name]:-}" ]; then
+      echo "$name ${alive[$name]}" >> "$PIDFILE.tmp"
+    else
+      nohup $PY $cmd >> "$LOGS/$name.log" 2>&1 &
+      echo "$name $!" >> "$PIDFILE.tmp"; echo "(re)started $name (pid $!)"
+    fi
+  done
+  mv "$PIDFILE.tmp" "$PIDFILE"
+}
+
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
   status) status ;;
+  ensure) ensure ;;
   restart) stop; sleep 2; start ;;
-  *) echo "usage: $0 {start|stop|status|restart}"; exit 1 ;;
+  *) echo "usage: $0 {start|stop|status|ensure|restart}"; exit 1 ;;
 esac

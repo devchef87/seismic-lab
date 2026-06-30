@@ -223,6 +223,29 @@ def _fetch_dart_status():
         conn.close()
 
 
+@app.get("/api/ionosphere/tec")
+async def api_ionosphere_tec():
+    """Latest global ionospheric TEC field (NOAA SWPC GloTEC) as a GeoJSON grid for the
+    map heatmap overlay. 5184 cells @ 2.5x5 deg; properties: tec, anomaly, hmF2, NmF2."""
+    return await asyncio.to_thread(_fetch_ionosphere_tec)
+
+
+def _fetch_ionosphere_tec():
+    import os, json as _json
+    from ingest.sources import _GLOTEC_CACHE, fetch_glotec
+    if not os.path.exists(_GLOTEC_CACHE):
+        try:
+            fetch_glotec()  # populate on first hit if the poller hasn't run yet
+        except Exception:
+            pass
+    try:
+        with open(_GLOTEC_CACHE) as f:
+            return _json.load(f)
+    except Exception:
+        return {"type": "FeatureCollection", "features": [], "time_tag": None,
+                "error": "GloTEC data not available yet"}
+
+
 @app.get("/api/volcanic/activity")
 async def api_volcanic_activity():
     return await asyncio.to_thread(_fetch_volcanic_activity)

@@ -1030,6 +1030,51 @@ def fetch_firms_nrt() -> list[Sample]:
     return samples
 
 
+# --- NOAA SWPC GloTEC: global ionospheric Total Electron Content (2.5x5 deg, ~10 min) ---
+_GLOTEC_INDEX = "https://services.swpc.noaa.gov/products/glotec/geojson_2d_urt.json"
+_GLOTEC_BASE = "https://services.swpc.noaa.gov"
+_GLOTEC_CACHE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "data", "glotec_latest.json")
+
+
+def fetch_glotec() -> list[Sample]:
+    """Global TEC map from NOAA SWPC GloTEC. Caches the full latest GeoJSON frame for the
+    dashboard overlay (/api/ionosphere/tec), and emits a coarse (~20 deg) grid of TEC +
+    anomaly samples for the time-series store (the full 5184-cell grid is too dense to keep
+    every cycle; the field is smooth so a coarse grid is plenty for a model feature)."""
+    idx = _fetch_json(_GLOTEC_INDEX)
+    if not idx:
+        return []
+    latest = idx[-1]
+    geo = _fetch_json(_GLOTEC_BASE + latest["url"])
+    if not geo or "features" not in geo:
+        return []
+    ts = latest.get("time_tag")
+    # cache the FULL-resolution frame for the overlay endpoint
+    try:
+        with open(_GLOTEC_CACHE, "w") as f:
+            json.dump({"time_tag": ts, **geo}, f)
+    except Exception as e:
+        log.warning(f"GloTEC cache write failed: {e}")
+    # coarse subsample for the store: every 8th lat (2.5->20 deg), every 4th lon (5->20 deg)
+    samples = []
+    for ft in geo["features"]:
+        c = ft.get("geometry", {}).get("coordinates")
+        p = ft.get("properties", {})
+        if not c or p.get("tec") is None:
+            continue
+        lon, lat = round(c[0], 2), round(c[1], 2)
+        if int(round((lat + 88.75) / 2.5)) % 8 or int(round((lon + 177.5) / 5)) % 4:
+            continue
+        samples.append(Sample(source="noaa_glotec", metric="tec", timestamp=ts,
+                              value=float(p["tec"]), unit="TECU", lat=lat, lon=lon))
+        if p.get("anomaly") is not None:
+            samples.append(Sample(source="noaa_glotec", metric="tec_anomaly", timestamp=ts,
+                                  value=float(p["anomaly"]), unit="TECU", lat=lat, lon=lon))
+    log.info(f"NOAA GloTEC: {len(samples)} grid samples (frame {ts}); full frame cached")
+    return samples
+
+
 # ---------------------------------------------------------------------------
 # SOURCE REGISTRY — all sources with fetch functions and poll intervals
 # ---------------------------------------------------------------------------
@@ -1064,6 +1109,11 @@ SOURCE_REGISTRY = {
         "fn": fetch_mag_field,
         "interval_min": 5,
         "description": "Interplanetary magnetic field (Bz, Bt)",
+    },
+    "glotec": {
+        "fn": fetch_glotec,
+        "interval_min": 30,
+        "description": "NOAA SWPC GloTEC global ionospheric TEC map (overlay + coarse grid feature)",
     },
     "donki_cme": {
         "fn": fetch_donki_cme,
