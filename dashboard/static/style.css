@@ -2420,6 +2420,38 @@ html, body {
     width: 10px;
     height: 10px;
 }
+.wx-radar-swatch {
+    background: linear-gradient(135deg, rgba(40,180,80,0.6), rgba(255,200,40,0.7), rgba(220,50,30,0.7));
+    width: 10px; height: 10px;
+}
+.wx-warn-swatch {
+    background: rgba(255,60,120,0.8);
+    box-shadow: 0 0 5px rgba(255,60,120,0.4);
+    width: 10px; height: 10px;
+}
+.wx-outlook-swatch {
+    background: linear-gradient(135deg, rgba(100,180,100,0.5), rgba(220,170,0,0.6), rgba(220,50,30,0.6));
+    width: 10px; height: 10px;
+}
+.wx-hurricane-swatch {
+    background: rgba(180,120,255,0.8);
+    box-shadow: 0 0 5px rgba(180,120,255,0.4);
+    width: 10px; height: 10px;
+}
+.wx-hurricane-marker { cursor: pointer; text-align: center; }
+.wx-hurricane-glyph {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid rgba(180,120,255,0.8);
+    box-shadow: 0 0 12px rgba(180,120,255,0.5), inset 0 0 6px rgba(180,120,255,0.3);
+    animation: eqSpin 4s linear infinite;
+    background: radial-gradient(circle, rgba(180,120,255,0.3) 0%, transparent 70%);
+}
+.wx-hurricane-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; font-weight: 600; letter-spacing: 0.5px;
+    color: rgba(180,120,255,0.9); text-shadow: 0 0 6px rgba(180,120,255,0.4);
+    margin-top: 2px; white-space: nowrap;
+}
 .volc-high-swatch {
     background: rgba(220,60,40,0.85);
     box-shadow: 0 0 4px rgba(220,60,40,0.4);
