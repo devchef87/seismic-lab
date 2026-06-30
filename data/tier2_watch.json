@@ -1,488 +1,4426 @@
 {
-  "generated": "2026-06-29 02:00:00+00:00",
-  "base_rate_72h": 0.0602,
-  "n_active_swarms": 25,
+  "generated": "2026-06-30 06:00:00+00:00",
+  "base_rate_72h": 0.0618,
+  "n_active_swarms": 27,
   "alert_counts": {
-    "NORMAL": 24,
-    "ADVISORY": 1,
+    "NORMAL": 27,
+    "ADVISORY": 0,
     "WATCH": 0,
     "WARNING": 0
   },
   "watch": [
     {
-      "cell": "south_america_-30_-072",
-      "zone": "south_america",
+      "cell": "swarm_-3.4_+135.5",
+      "zone": "indonesia",
+      "model_skill": "experimental",
       "lat_range": [
-        -30,
-        -20
+        -8.432727272727274,
+        1.5672727272727274
       ],
       "lon_range": [
-        -72,
-        -62
+        130.4690909090909,
+        140.4690909090909
       ],
-      "escalation_prob_72h": 0.098,
-      "alert_level": "ADVISORY",
+      "escalation_prob_72h": 0.097,
+      "alert_level": "NORMAL",
       "lift_vs_base": 1.6,
-      "prob_6h_ago": 0.098,
-      "trend_6h": -0.0,
+      "prob_6h_ago": 0.097,
+      "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -3.43,
+        135.47
+      ],
+      "n_recent_quakes": 11,
+      "extent": [
+        -4.22,
+        -1.44,
+        133.69,
+        136.99
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000012",
+          "time": "2026-06-30T00:54:26+00:00",
+          "mag": 3.2,
+          "depth_km": 10.0,
+          "lat": -3.85,
+          "lon": 135.84,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018851",
+          "time": "2026-06-29T17:44:57+00:00",
+          "mag": 2.6,
+          "depth_km": 52.0,
+          "lat": -3.48,
+          "lon": 135.52,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018821",
+          "time": "2026-06-29T16:27:07+00:00",
+          "mag": 2.8,
+          "depth_km": 15.0,
+          "lat": -3.62,
+          "lon": 135.02,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260628_0000292",
+          "time": "2026-06-28T20:00:24+00:00",
+          "mag": 3.0,
+          "depth_km": 10.0,
+          "lat": -3.79,
+          "lon": 134.93,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260628_0000247",
+          "time": "2026-06-28T17:46:44+00:00",
+          "mag": 2.9,
+          "depth_km": 10.0,
+          "lat": -4.22,
+          "lon": 134.25,
+          "place": "NEAR S COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260628_0000222",
+          "time": "2026-06-28T15:47:11+00:00",
+          "mag": 2.5,
+          "depth_km": 10.0,
+          "lat": -3.73,
+          "lon": 135.31,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018278",
+          "time": "2026-06-28T14:24:01+00:00",
+          "mag": 4.0,
+          "depth_km": 10.0,
+          "lat": -1.44,
+          "lon": 136.79,
+          "place": "BIAK REGION, INDONESIA"
+        },
+        {
+          "id": "emsc:20260628_0000136",
+          "time": "2026-06-28T10:06:33+00:00",
+          "mag": 2.5,
+          "depth_km": 33.0,
+          "lat": -3.42,
+          "lon": 135.6,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000233",
+          "time": "2026-06-27T15:32:00+00:00",
+          "mag": 3.1,
+          "depth_km": 101.0,
+          "lat": -3.68,
+          "lon": 136.99,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000161",
+          "time": "2026-06-27T11:04:42+00:00",
+          "mag": 3.1,
+          "depth_km": 23.0,
+          "lat": -2.59,
+          "lon": 136.22,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000158",
+          "time": "2026-06-27T10:57:57+00:00",
+          "mag": 3.1,
+          "depth_km": 10.0,
+          "lat": -3.94,
+          "lon": 133.69,
+          "place": "PAPUA, INDONESIA"
+        }
+      ]
     },
     {
-      "cell": "mediterranean_+34_+019",
-      "zone": "mediterranean",
+      "cell": "swarm_-22.0_-68.5",
+      "zone": "south_america",
+      "model_skill": "validated",
       "lat_range": [
-        34,
-        43
+        -27.03769555555556,
+        -17.03769555555556
       ],
       "lon_range": [
-        19,
-        29
+        -73.48116222222222,
+        -63.481162222222224
       ],
-      "escalation_prob_72h": 0.048,
+      "escalation_prob_72h": 0.097,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 1.6,
+      "prob_6h_ago": 0.097,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -22.04,
+        -68.48
+      ],
+      "n_recent_quakes": 90,
+      "extent": [
+        -24.29,
+        -18.04,
+        -71.07,
+        -66.17
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2019133",
+          "time": "2026-06-30T05:50:13+00:00",
+          "mag": 3.1,
+          "depth_km": 19.5,
+          "lat": -22.54,
+          "lon": -70.56,
+          "place": "OFFSHORE ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2019123",
+          "time": "2026-06-30T05:13:42+00:00",
+          "mag": 2.5,
+          "depth_km": 46.3,
+          "lat": -22.45,
+          "lon": -69.7,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2019121",
+          "time": "2026-06-30T05:03:50+00:00",
+          "mag": 3.3,
+          "depth_km": 137.5,
+          "lat": -24.05,
+          "lon": -67.95,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260630_0000058",
+          "time": "2026-06-30T04:30:28+00:00",
+          "mag": 2.5,
+          "depth_km": 130.5,
+          "lat": -21.56,
+          "lon": -68.47,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260630_0000049",
+          "time": "2026-06-30T03:33:37+00:00",
+          "mag": 3.0,
+          "depth_km": 134.4,
+          "lat": -21.7,
+          "lon": -68.56,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260630_0000035",
+          "time": "2026-06-30T02:17:46+00:00",
+          "mag": 2.5,
+          "depth_km": 143.7,
+          "lat": -21.54,
+          "lon": -68.4,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2019054",
+          "time": "2026-06-30T02:13:00+00:00",
+          "mag": 3.4,
+          "depth_km": 246.9,
+          "lat": -23.72,
+          "lon": -67.09,
+          "place": "JUJUY, ARGENTINA"
+        },
+        {
+          "id": "emsc_2019031",
+          "time": "2026-06-30T01:22:40+00:00",
+          "mag": 2.6,
+          "depth_km": 127.0,
+          "lat": -21.53,
+          "lon": -68.71,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018953",
+          "time": "2026-06-29T21:29:18+00:00",
+          "mag": 3.3,
+          "depth_km": 192.2,
+          "lat": -24.11,
+          "lon": -67.3,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260629_0000353",
+          "time": "2026-06-29T21:29:18+00:00",
+          "mag": 3.3,
+          "depth_km": 199.6,
+          "lat": -24.12,
+          "lon": -67.37,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018941",
+          "time": "2026-06-29T20:46:46+00:00",
+          "mag": 3.2,
+          "depth_km": 256.0,
+          "lat": -22.95,
+          "lon": -67.09,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018908",
+          "time": "2026-06-29T19:41:58+00:00",
+          "mag": 2.6,
+          "depth_km": 135.7,
+          "lat": -21.67,
+          "lon": -68.63,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018839",
+          "time": "2026-06-29T17:10:12+00:00",
+          "mag": 2.6,
+          "depth_km": 110.1,
+          "lat": -20.63,
+          "lon": -69.15,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018834",
+          "time": "2026-06-29T17:04:09+00:00",
+          "mag": 3.5,
+          "depth_km": 247.0,
+          "lat": -23.92,
+          "lon": -67.24,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018811",
+          "time": "2026-06-29T16:00:37+00:00",
+          "mag": 2.6,
+          "depth_km": 100.2,
+          "lat": -22.11,
+          "lon": -68.86,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000223",
+          "time": "2026-06-29T14:50:45+00:00",
+          "mag": 2.8,
+          "depth_km": 101.9,
+          "lat": -20.71,
+          "lon": -68.88,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018775",
+          "time": "2026-06-29T14:50:45+00:00",
+          "mag": 2.9,
+          "depth_km": 101.0,
+          "lat": -20.72,
+          "lon": -68.88,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018766",
+          "time": "2026-06-29T14:14:53+00:00",
+          "mag": 2.6,
+          "depth_km": 123.2,
+          "lat": -21.33,
+          "lon": -68.57,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018735",
+          "time": "2026-06-29T13:38:23+00:00",
+          "mag": 2.5,
+          "depth_km": 107.6,
+          "lat": -22.45,
+          "lon": -68.73,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018712",
+          "time": "2026-06-29T12:25:46+00:00",
+          "mag": 2.6,
+          "depth_km": 125.9,
+          "lat": -21.6,
+          "lon": -68.42,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018722",
+          "time": "2026-06-29T12:18:48+00:00",
+          "mag": 2.8,
+          "depth_km": 117.7,
+          "lat": -21.35,
+          "lon": -68.72,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018707",
+          "time": "2026-06-29T11:57:46+00:00",
+          "mag": 2.9,
+          "depth_km": 107.7,
+          "lat": -20.56,
+          "lon": -68.92,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018702",
+          "time": "2026-06-29T11:36:41+00:00",
+          "mag": 3.5,
+          "depth_km": 224.2,
+          "lat": -23.33,
+          "lon": -67.61,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018705",
+          "time": "2026-06-29T11:35:11+00:00",
+          "mag": 2.9,
+          "depth_km": 154.3,
+          "lat": -21.24,
+          "lon": -68.65,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018670",
+          "time": "2026-06-29T10:24:00+00:00",
+          "mag": 3.2,
+          "depth_km": 115.7,
+          "lat": -21.94,
+          "lon": -68.76,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018663",
+          "time": "2026-06-29T10:15:19+00:00",
+          "mag": 4.0,
+          "depth_km": 160.1,
+          "lat": -21.57,
+          "lon": -68.55,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018656",
+          "time": "2026-06-29T09:18:15+00:00",
+          "mag": 3.2,
+          "depth_km": 163.8,
+          "lat": -20.681,
+          "lon": -67.947,
+          "place": "POTOSI, BOLIVIA"
+        },
+        {
+          "id": "emsc:20260629_0000234",
+          "time": "2026-06-29T07:45:23+00:00",
+          "mag": 3.3,
+          "depth_km": 268.0,
+          "lat": -22.791,
+          "lon": -66.251,
+          "place": "JUJUY, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018617",
+          "time": "2026-06-29T07:10:13+00:00",
+          "mag": 2.9,
+          "depth_km": 92.0,
+          "lat": -23.35,
+          "lon": -68.85,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018615",
+          "time": "2026-06-29T07:06:28+00:00",
+          "mag": 2.6,
+          "depth_km": 113.1,
+          "lat": -21.09,
+          "lon": -68.99,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018596",
+          "time": "2026-06-29T05:37:25+00:00",
+          "mag": 3.6,
+          "depth_km": 48.5,
+          "lat": -23.48,
+          "lon": -70.13,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018590",
+          "time": "2026-06-29T05:25:34+00:00",
+          "mag": 2.6,
+          "depth_km": 152.9,
+          "lat": -21.0,
+          "lon": -68.62,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018610",
+          "time": "2026-06-29T05:21:58+00:00",
+          "mag": 2.6,
+          "depth_km": 52.6,
+          "lat": -21.29,
+          "lon": -69.74,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018588",
+          "time": "2026-06-29T05:19:00+00:00",
+          "mag": 2.5,
+          "depth_km": 126.0,
+          "lat": -22.06,
+          "lon": -68.69,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018576",
+          "time": "2026-06-29T04:32:30+00:00",
+          "mag": 3.2,
+          "depth_km": 147.2,
+          "lat": -23.08,
+          "lon": -67.95,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018572",
+          "time": "2026-06-29T04:26:30+00:00",
+          "mag": 3.4,
+          "depth_km": 228.2,
+          "lat": -24.02,
+          "lon": -67.39,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000039",
+          "time": "2026-06-29T02:53:12+00:00",
+          "mag": 2.8,
+          "depth_km": 187.2,
+          "lat": -22.45,
+          "lon": -67.79,
+          "place": "POTOSI, BOLIVIA"
+        },
+        {
+          "id": "emsc:20260629_0000015",
+          "time": "2026-06-29T01:17:18+00:00",
+          "mag": 2.5,
+          "depth_km": 105.5,
+          "lat": -21.1,
+          "lon": -68.8,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000011",
+          "time": "2026-06-29T01:03:14+00:00",
+          "mag": 3.2,
+          "depth_km": 120.0,
+          "lat": -22.42,
+          "lon": -68.55,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000006",
+          "time": "2026-06-29T00:55:36+00:00",
+          "mag": 3.4,
+          "depth_km": 137.9,
+          "lat": -23.3,
+          "lon": -67.99,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000341",
+          "time": "2026-06-28T22:29:17+00:00",
+          "mag": 2.6,
+          "depth_km": 110.0,
+          "lat": -20.88,
+          "lon": -69.23,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018439",
+          "time": "2026-06-28T22:20:27+00:00",
+          "mag": 3.6,
+          "depth_km": 91.7,
+          "lat": -22.78,
+          "lon": -69.03,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "us6000t8vn",
+          "time": "2026-06-28T21:53:27.409000+00:00",
+          "mag": 4.2,
+          "depth_km": 127.1,
+          "lat": -21.655,
+          "lon": -68.405,
+          "place": "50 km SSW of Ollag\u00fce, Chile"
+        },
+        {
+          "id": "emsc:20260628_0000316",
+          "time": "2026-06-28T21:06:42+00:00",
+          "mag": 2.6,
+          "depth_km": 107.6,
+          "lat": -20.43,
+          "lon": -68.86,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc_2018382",
+          "time": "2026-06-28T20:01:01+00:00",
+          "mag": 3.7,
+          "depth_km": 100.4,
+          "lat": -19.99,
+          "lon": -69.32,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "us6000t8ua",
+          "time": "2026-06-28T17:34:16.402000+00:00",
+          "mag": 4.5,
+          "depth_km": 252.9,
+          "lat": -22.871,
+          "lon": -66.165,
+          "place": "50 km WSW of Abra Pampa, Argentina"
+        },
+        {
+          "id": "emsc:20260628_0000237",
+          "time": "2026-06-28T17:21:57+00:00",
+          "mag": 2.8,
+          "depth_km": 123.9,
+          "lat": -21.85,
+          "lon": -68.58,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000224",
+          "time": "2026-06-28T16:12:02+00:00",
+          "mag": 2.8,
+          "depth_km": 111.1,
+          "lat": -21.08,
+          "lon": -68.94,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000191",
+          "time": "2026-06-28T14:10:45+00:00",
+          "mag": 2.7,
+          "depth_km": 174.7,
+          "lat": -24.02,
+          "lon": -67.09,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000178",
+          "time": "2026-06-28T13:19:42+00:00",
+          "mag": 3.3,
+          "depth_km": 174.6,
+          "lat": -24.29,
+          "lon": -67.07,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000173",
+          "time": "2026-06-28T13:01:18+00:00",
+          "mag": 2.7,
+          "depth_km": 249.8,
+          "lat": -23.96,
+          "lon": -67.54,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000166",
+          "time": "2026-06-28T12:48:37+00:00",
+          "mag": 3.4,
+          "depth_km": 102.3,
+          "lat": -23.4,
+          "lon": -68.46,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000164",
+          "time": "2026-06-28T12:41:34+00:00",
+          "mag": 3.0,
+          "depth_km": 217.9,
+          "lat": -21.88,
+          "lon": -67.9,
+          "place": "POTOSI, BOLIVIA"
+        },
+        {
+          "id": "emsc_2018227",
+          "time": "2026-06-28T12:36:14+00:00",
+          "mag": 3.8,
+          "depth_km": 100.2,
+          "lat": -23.15,
+          "lon": -68.62,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018200",
+          "time": "2026-06-28T11:26:27+00:00",
+          "mag": 4.0,
+          "depth_km": 242.0,
+          "lat": -23.78,
+          "lon": -67.34,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "us6000t8t9",
+          "time": "2026-06-28T11:26:25.588000+00:00",
+          "mag": 4.2,
+          "depth_km": 206.6,
+          "lat": -24.056,
+          "lon": -66.877,
+          "place": "59 km WNW of San Antonio de los Cobres, Argentina"
+        },
+        {
+          "id": "emsc:20260628_0000141",
+          "time": "2026-06-28T11:24:44+00:00",
+          "mag": 3.0,
+          "depth_km": 111.7,
+          "lat": -20.81,
+          "lon": -69.06,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000130",
+          "time": "2026-06-28T10:53:38+00:00",
+          "mag": 2.5,
+          "depth_km": 135.4,
+          "lat": -21.28,
+          "lon": -68.73,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018184",
+          "time": "2026-06-28T10:34:37+00:00",
+          "mag": 3.6,
+          "depth_km": 129.5,
+          "lat": -21.73,
+          "lon": -68.66,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc_2018174",
+          "time": "2026-06-28T10:00:49+00:00",
+          "mag": 3.6,
+          "depth_km": 227.7,
+          "lat": -23.07,
+          "lon": -66.94,
+          "place": "JUJUY, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018142",
+          "time": "2026-06-28T08:09:33+00:00",
+          "mag": 3.6,
+          "depth_km": 205.9,
+          "lat": -24.07,
+          "lon": -67.45,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000078",
+          "time": "2026-06-28T07:37:30+00:00",
+          "mag": 2.5,
+          "depth_km": 24.8,
+          "lat": -19.75,
+          "lon": -71.07,
+          "place": "OFF COAST OF TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000073",
+          "time": "2026-06-28T07:09:03+00:00",
+          "mag": 2.5,
+          "depth_km": 120.0,
+          "lat": -21.97,
+          "lon": -68.65,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000065",
+          "time": "2026-06-28T06:26:41+00:00",
+          "mag": 3.1,
+          "depth_km": 140.7,
+          "lat": -18.04,
+          "lon": -69.49,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000017",
+          "time": "2026-06-28T01:26:33+00:00",
+          "mag": 3.2,
+          "depth_km": 139.2,
+          "lat": -21.44,
+          "lon": -68.6,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000336",
+          "time": "2026-06-27T23:47:46+00:00",
+          "mag": 2.7,
+          "depth_km": 118.9,
+          "lat": -18.66,
+          "lon": -69.45,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000331",
+          "time": "2026-06-27T23:33:14+00:00",
+          "mag": 2.5,
+          "depth_km": 86.8,
+          "lat": -23.01,
+          "lon": -69.16,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000326",
+          "time": "2026-06-27T22:59:17+00:00",
+          "mag": 2.7,
+          "depth_km": 91.4,
+          "lat": -21.71,
+          "lon": -68.88,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000307",
+          "time": "2026-06-27T21:11:31+00:00",
+          "mag": 3.0,
+          "depth_km": 90.4,
+          "lat": -22.03,
+          "lon": -69.03,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000304",
+          "time": "2026-06-27T21:01:50+00:00",
+          "mag": 2.5,
+          "depth_km": 110.7,
+          "lat": -22.16,
+          "lon": -68.68,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000301",
+          "time": "2026-06-27T20:53:11+00:00",
+          "mag": 2.6,
+          "depth_km": 112.4,
+          "lat": -20.48,
+          "lon": -68.76,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000291",
+          "time": "2026-06-27T20:18:00+00:00",
+          "mag": 2.5,
+          "depth_km": 90.9,
+          "lat": -23.3,
+          "lon": -69.22,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000280",
+          "time": "2026-06-27T19:03:05+00:00",
+          "mag": 3.4,
+          "depth_km": 262.8,
+          "lat": -23.09,
+          "lon": -67.1,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000269",
+          "time": "2026-06-27T18:10:52+00:00",
+          "mag": 2.6,
+          "depth_km": 127.8,
+          "lat": -21.78,
+          "lon": -68.65,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000268",
+          "time": "2026-06-27T18:06:08+00:00",
+          "mag": 2.6,
+          "depth_km": 105.6,
+          "lat": -20.16,
+          "lon": -69.2,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000264",
+          "time": "2026-06-27T17:53:03+00:00",
+          "mag": 3.3,
+          "depth_km": 189.2,
+          "lat": -24.09,
+          "lon": -67.09,
+          "place": "SALTA, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000363",
+          "time": "2026-06-27T17:29:04+00:00",
+          "mag": 3.4,
+          "depth_km": 223.0,
+          "lat": -21.214,
+          "lon": -66.8,
+          "place": "POTOSI, BOLIVIA"
+        },
+        {
+          "id": "emsc:20260627_0000256",
+          "time": "2026-06-27T17:06:43+00:00",
+          "mag": 2.8,
+          "depth_km": 105.5,
+          "lat": -22.2,
+          "lon": -68.64,
+          "place": "ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000246",
+          "time": "2026-06-27T16:18:01+00:00",
+          "mag": 3.0,
+          "depth_km": 128.1,
+          "lat": -21.15,
+          "lon": -68.79,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000231",
+          "time": "2026-06-27T15:27:58+00:00",
+          "mag": 3.3,
+          "depth_km": 203.9,
+          "lat": -23.81,
+          "lon": -67.11,
+          "place": "JUJUY, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000220",
+          "time": "2026-06-27T14:43:16+00:00",
+          "mag": 2.5,
+          "depth_km": 100.0,
+          "lat": -20.72,
+          "lon": -68.93,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000217",
+          "time": "2026-06-27T14:26:09+00:00",
+          "mag": 3.0,
+          "depth_km": 46.1,
+          "lat": -21.37,
+          "lon": -70.45,
+          "place": "OFFSHORE ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "us6000t8p4",
+          "time": "2026-06-27T12:50:52.230000+00:00",
+          "mag": 4.2,
+          "depth_km": 114.8,
+          "lat": -22.77,
+          "lon": -69.15,
+          "place": "41 km SW of Calama, Chile"
+        },
+        {
+          "id": "us6000t8p0",
+          "time": "2026-06-27T11:39:44.765000+00:00",
+          "mag": 4.3,
+          "depth_km": 125.1,
+          "lat": -21.405,
+          "lon": -68.699,
+          "place": "50 km WSW of Ollag\u00fce, Chile"
+        },
+        {
+          "id": "emsc:20260627_0000140",
+          "time": "2026-06-27T10:18:53+00:00",
+          "mag": 2.5,
+          "depth_km": 114.9,
+          "lat": -21.2,
+          "lon": -68.97,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000097",
+          "time": "2026-06-27T07:40:15+00:00",
+          "mag": 2.7,
+          "depth_km": 115.1,
+          "lat": -20.71,
+          "lon": -69.23,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000091",
+          "time": "2026-06-27T07:22:26+00:00",
+          "mag": 3.2,
+          "depth_km": 15.2,
+          "lat": -20.43,
+          "lon": -69.87,
+          "place": "TARAPACA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000089",
+          "time": "2026-06-27T07:02:18+00:00",
+          "mag": 2.8,
+          "depth_km": 54.5,
+          "lat": -22.55,
+          "lon": -70.49,
+          "place": "OFFSHORE ANTOFAGASTA, CHILE"
+        },
+        {
+          "id": "us6000t8m6",
+          "time": "2026-06-27T06:36:27.012000+00:00",
+          "mag": 4.4,
+          "depth_km": 119.6,
+          "lat": -22.042,
+          "lon": -68.65,
+          "place": "53 km NNE of Calama, Chile"
+        },
+        {
+          "id": "emsc:20260627_0000362",
+          "time": "2026-06-27T06:03:49+00:00",
+          "mag": 3.3,
+          "depth_km": 199.5,
+          "lat": -21.606,
+          "lon": -66.769,
+          "place": "POTOSI, BOLIVIA"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_-2.7_+140.4",
+      "zone": "3S_140E",
+      "model_skill": "experimental",
+      "lat_range": [
+        -7.678181818181818,
+        2.321818181818182
+      ],
+      "lon_range": [
+        135.43363636363637,
+        145.43363636363637
+      ],
+      "escalation_prob_72h": 0.097,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 1.6,
+      "prob_6h_ago": 0.097,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -2.68,
+        140.43
+      ],
+      "n_recent_quakes": 11,
+      "extent": [
+        -3.52,
+        -2.2,
+        139.77,
+        141.28
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018837",
+          "time": "2026-06-29T17:07:44+00:00",
+          "mag": 2.6,
+          "depth_km": 10.0,
+          "lat": -2.2,
+          "lon": 140.24,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018706",
+          "time": "2026-06-29T12:04:02+00:00",
+          "mag": 3.3,
+          "depth_km": 23.0,
+          "lat": -3.36,
+          "lon": 141.05,
+          "place": "NEW GUINEA, PAPUA NEW GUINEA"
+        },
+        {
+          "id": "emsc_2018653",
+          "time": "2026-06-29T04:17:44+00:00",
+          "mag": 3.1,
+          "depth_km": 29.0,
+          "lat": -2.46,
+          "lon": 140.73,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018539",
+          "time": "2026-06-29T03:12:09+00:00",
+          "mag": 2.8,
+          "depth_km": 17.0,
+          "lat": -2.82,
+          "lon": 140.32,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018319",
+          "time": "2026-06-28T17:22:27+00:00",
+          "mag": 2.7,
+          "depth_km": 30.0,
+          "lat": -2.64,
+          "lon": 141.28,
+          "place": "NEAR N COAST OF NEW GUINEA, PNG."
+        },
+        {
+          "id": "emsc_2018230",
+          "time": "2026-06-28T12:38:44+00:00",
+          "mag": 3.3,
+          "depth_km": 10.0,
+          "lat": -2.24,
+          "lon": 140.21,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018217",
+          "time": "2026-06-28T12:14:41+00:00",
+          "mag": 3.6,
+          "depth_km": 10.0,
+          "lat": -2.21,
+          "lon": 140.21,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018204",
+          "time": "2026-06-28T11:36:59+00:00",
+          "mag": 3.5,
+          "depth_km": 7.0,
+          "lat": -2.31,
+          "lon": 140.27,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc_2017990",
+          "time": "2026-06-27T21:26:00+00:00",
+          "mag": 2.7,
+          "depth_km": 12.0,
+          "lat": -2.22,
+          "lon": 140.04,
+          "place": "NEAR N COAST OF PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000251",
+          "time": "2026-06-27T16:35:36+00:00",
+          "mag": 2.6,
+          "depth_km": 55.0,
+          "lat": -3.52,
+          "lon": 140.65,
+          "place": "PAPUA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000082",
+          "time": "2026-06-27T06:20:04+00:00",
+          "mag": 3.2,
+          "depth_km": 120.0,
+          "lat": -3.48,
+          "lon": 139.77,
+          "place": "PAPUA, INDONESIA"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_-26.2_-69.9",
+      "zone": "south_america",
+      "model_skill": "validated",
+      "lat_range": [
+        -31.176666666666666,
+        -21.176666666666666
+      ],
+      "lon_range": [
+        -74.87,
+        -64.87
+      ],
+      "escalation_prob_72h": 0.097,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 1.6,
+      "prob_6h_ago": 0.097,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -26.18,
+        -69.87
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        -27.13,
+        -25.43,
+        -70.5,
+        -69.36
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018697",
+          "time": "2026-06-29T11:16:32+00:00",
+          "mag": 2.9,
+          "depth_km": 78.1,
+          "lat": -25.97,
+          "lon": -69.75,
+          "place": "ATACAMA, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000111",
+          "time": "2026-06-28T10:02:07+00:00",
+          "mag": 3.2,
+          "depth_km": 105.9,
+          "lat": -27.13,
+          "lon": -69.36,
+          "place": "ATACAMA, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000295",
+          "time": "2026-06-27T20:26:22+00:00",
+          "mag": 3.3,
+          "depth_km": 62.1,
+          "lat": -25.43,
+          "lon": -70.5,
+          "place": "ANTOFAGASTA, CHILE"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_-31.4_-69.7",
+      "zone": "south_america",
+      "model_skill": "validated",
+      "lat_range": [
+        -36.42967,
+        -26.429669999999998
+      ],
+      "lon_range": [
+        -74.71843333333332,
+        -64.71843333333332
+      ],
+      "escalation_prob_72h": 0.058,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.9,
+      "prob_6h_ago": 0.058,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -31.43,
+        -69.72
+      ],
+      "n_recent_quakes": 30,
+      "extent": [
+        -33.56,
+        -28.85,
+        -71.98,
+        -67.11
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000070",
+          "time": "2026-06-30T05:57:32+00:00",
+          "mag": 2.6,
+          "depth_km": 57.9,
+          "lat": -30.61,
+          "lon": -71.15,
+          "place": "COQUIMBO, CHILE"
+        },
+        {
+          "id": "emsc_2018988",
+          "time": "2026-06-29T23:18:18+00:00",
+          "mag": 3.4,
+          "depth_km": 117.0,
+          "lat": -32.74,
+          "lon": -69.76,
+          "place": "MENDOZA, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018924",
+          "time": "2026-06-29T20:04:25+00:00",
+          "mag": 2.5,
+          "depth_km": 131.5,
+          "lat": -32.04,
+          "lon": -70.0,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260629_0000326",
+          "time": "2026-06-29T20:04:25+00:00",
+          "mag": 2.7,
+          "depth_km": 131.5,
+          "lat": -32.04,
+          "lon": -70.0,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018853",
+          "time": "2026-06-29T18:03:16+00:00",
+          "mag": 3.9,
+          "depth_km": 101.0,
+          "lat": -31.39,
+          "lon": -68.87,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260629_0000222",
+          "time": "2026-06-29T06:57:54+00:00",
+          "mag": 2.6,
+          "depth_km": 10.0,
+          "lat": -32.771,
+          "lon": -68.643,
+          "place": "MENDOZA, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018609",
+          "time": "2026-06-29T06:32:55+00:00",
+          "mag": 2.9,
+          "depth_km": 42.5,
+          "lat": -28.85,
+          "lon": -71.23,
+          "place": "ATACAMA, CHILE"
+        },
+        {
+          "id": "emsc_2018607",
+          "time": "2026-06-29T06:24:00+00:00",
+          "mag": 3.2,
+          "depth_km": 227.0,
+          "lat": -32.73,
+          "lon": -67.11,
+          "place": "SAN LUIS, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018589",
+          "time": "2026-06-29T05:21:38+00:00",
+          "mag": 2.5,
+          "depth_km": 112.0,
+          "lat": -32.01,
+          "lon": -69.27,
+          "place": "MENDOZA, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018565",
+          "time": "2026-06-29T04:09:47+00:00",
+          "mag": 2.7,
+          "depth_km": 12.6,
+          "lat": -32.26,
+          "lon": -71.74,
+          "place": "OFFSHORE VALPARAISO, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000035",
+          "time": "2026-06-29T02:19:23+00:00",
+          "mag": 3.2,
+          "depth_km": 84.0,
+          "lat": -31.76,
+          "lon": -69.84,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000362",
+          "time": "2026-06-28T23:55:13+00:00",
+          "mag": 2.9,
+          "depth_km": 107.0,
+          "lat": -31.2,
+          "lon": -70.04,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000347",
+          "time": "2026-06-28T22:46:09+00:00",
+          "mag": 2.8,
+          "depth_km": 114.0,
+          "lat": -31.93,
+          "lon": -67.11,
+          "place": "SAN LUIS, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000299",
+          "time": "2026-06-28T20:08:42+00:00",
+          "mag": 3.1,
+          "depth_km": 125.0,
+          "lat": -32.03,
+          "lon": -69.59,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc_2018297",
+          "time": "2026-06-28T15:56:14+00:00",
+          "mag": 3.7,
+          "depth_km": 25.0,
+          "lat": -30.75,
+          "lon": -71.77,
+          "place": "OFFSHORE COQUIMBO, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000218",
+          "time": "2026-06-28T15:43:48+00:00",
+          "mag": 3.0,
+          "depth_km": 107.0,
+          "lat": -31.95,
+          "lon": -68.45,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000153",
+          "time": "2026-06-28T12:11:40+00:00",
+          "mag": 2.5,
+          "depth_km": 41.3,
+          "lat": -30.74,
+          "lon": -71.43,
+          "place": "COQUIMBO, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000133",
+          "time": "2026-06-28T11:06:03+00:00",
+          "mag": 2.9,
+          "depth_km": 69.6,
+          "lat": -29.69,
+          "lon": -70.77,
+          "place": "COQUIMBO, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000119",
+          "time": "2026-06-28T10:15:19+00:00",
+          "mag": 2.9,
+          "depth_km": 113.0,
+          "lat": -29.15,
+          "lon": -69.47,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000109",
+          "time": "2026-06-28T09:41:14+00:00",
+          "mag": 2.8,
+          "depth_km": 110.0,
+          "lat": -31.52,
+          "lon": -69.2,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260628_0000099",
+          "time": "2026-06-28T09:26:00+00:00",
+          "mag": 2.7,
+          "depth_km": 74.4,
+          "lat": -32.44,
+          "lon": -71.27,
+          "place": "VALPARAISO, CHILE"
+        },
+        {
+          "id": "emsc_2018138",
+          "time": "2026-06-28T07:58:42+00:00",
+          "mag": 3.5,
+          "depth_km": 10.0,
+          "lat": -33.56,
+          "lon": -68.34,
+          "place": "MENDOZA, ARGENTINA"
+        },
+        {
+          "id": "us6000t8s8",
+          "time": "2026-06-28T03:12:06.495000+00:00",
+          "mag": 4.4,
+          "depth_km": 109.7,
+          "lat": -31.547,
+          "lon": -67.964,
+          "place": "32 km ENE of Caucete, Argentina"
+        },
+        {
+          "id": "emsc:20260628_0000014",
+          "time": "2026-06-28T01:11:59+00:00",
+          "mag": 2.7,
+          "depth_km": 122.0,
+          "lat": -32.002,
+          "lon": -70.115,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000239",
+          "time": "2026-06-27T15:41:32+00:00",
+          "mag": 2.9,
+          "depth_km": 115.0,
+          "lat": -31.71,
+          "lon": -69.33,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000196",
+          "time": "2026-06-27T13:11:49+00:00",
+          "mag": 3.0,
+          "depth_km": 108.0,
+          "lat": -31.67,
+          "lon": -69.37,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000144",
+          "time": "2026-06-27T10:38:19+00:00",
+          "mag": 2.9,
+          "depth_km": 25.0,
+          "lat": -30.0,
+          "lon": -71.91,
+          "place": "OFFSHORE COQUIMBO, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000147",
+          "time": "2026-06-27T10:34:40+00:00",
+          "mag": 3.1,
+          "depth_km": 117.0,
+          "lat": -31.8,
+          "lon": -67.24,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000139",
+          "time": "2026-06-27T10:13:58+00:00",
+          "mag": 2.7,
+          "depth_km": 10.0,
+          "lat": -30.03,
+          "lon": -68.591,
+          "place": "SAN JUAN, ARGENTINA"
+        },
+        {
+          "id": "emsc:20260627_0000107",
+          "time": "2026-06-27T08:11:06+00:00",
+          "mag": 3.1,
+          "depth_km": 22.4,
+          "lat": -29.97,
+          "lon": -71.98,
+          "place": "OFFSHORE COQUIMBO, CHILE"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_-35.3_-71.5",
+      "zone": "south_america",
+      "model_skill": "validated",
+      "lat_range": [
+        -40.256,
+        -30.256
+      ],
+      "lon_range": [
+        -76.48400000000001,
+        -66.48400000000001
+      ],
+      "escalation_prob_72h": 0.058,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.9,
+      "prob_6h_ago": 0.058,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -35.26,
+        -71.48
+      ],
+      "n_recent_quakes": 5,
+      "extent": [
+        -36.44,
+        -34.1,
+        -72.11,
+        -70.92
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018569",
+          "time": "2026-06-29T04:13:49+00:00",
+          "mag": 3.6,
+          "depth_km": 63.4,
+          "lat": -36.44,
+          "lon": -72.11,
+          "place": "BIO-BIO, CHILE"
+        },
+        {
+          "id": "emsc:20260629_0000019",
+          "time": "2026-06-29T01:36:24+00:00",
+          "mag": 3.1,
+          "depth_km": 79.4,
+          "lat": -34.1,
+          "lon": -70.92,
+          "place": "LIBERTADOR O'HIGGINS, CHILE"
+        },
+        {
+          "id": "emsc:20260628_0000152",
+          "time": "2026-06-28T12:04:17+00:00",
+          "mag": 2.9,
+          "depth_km": 100.5,
+          "lat": -35.62,
+          "lon": -71.35,
+          "place": "MAULE, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000164",
+          "time": "2026-06-27T11:23:05+00:00",
+          "mag": 2.5,
+          "depth_km": 79.5,
+          "lat": -35.32,
+          "lon": -71.22,
+          "place": "MAULE, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000156",
+          "time": "2026-06-27T10:54:02+00:00",
+          "mag": 3.1,
+          "depth_km": 42.8,
+          "lat": -34.8,
+          "lon": -71.82,
+          "place": "LIBERTADOR O'HIGGINS, CHILE"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_+10.5_+123.0",
+      "zone": "philippines",
+      "model_skill": "experimental",
+      "lat_range": [
+        5.530000000000001,
+        15.530000000000001
+      ],
+      "lon_range": [
+        118.03333333333335,
+        128.03333333333336
+      ],
+      "escalation_prob_72h": 0.058,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.9,
+      "prob_6h_ago": 0.058,
+      "trend_6h": 0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        10.53,
+        123.03
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        10.23,
+        10.89,
+        122.24,
+        123.85
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018903",
+          "time": "2026-06-29T19:29:27+00:00",
+          "mag": 3.2,
+          "depth_km": 5.0,
+          "lat": 10.23,
+          "lon": 122.24,
+          "place": "PANAY, PHILIPPINES"
+        },
+        {
+          "id": "emsc_2018823",
+          "time": "2026-06-29T16:21:53+00:00",
+          "mag": 3.3,
+          "depth_km": 9.0,
+          "lat": 10.47,
+          "lon": 123.01,
+          "place": "NEGROS- CEBU REG, PHILIPPINES"
+        },
+        {
+          "id": "emsc_2017824",
+          "time": "2026-06-27T12:12:24+00:00",
+          "mag": 3.5,
+          "depth_km": 5.0,
+          "lat": 10.89,
+          "lon": 123.85,
+          "place": "NEGROS- CEBU REG, PHILIPPINES"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_+35.5_+24.3",
+      "zone": "mediterranean",
+      "model_skill": "experimental",
+      "lat_range": [
+        30.531646666666667,
+        40.53164666666667
+      ],
+      "lon_range": [
+        19.313546666666664,
+        29.313546666666664
+      ],
+      "escalation_prob_72h": 0.049,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.8,
-      "prob_6h_ago": 0.048,
+      "prob_6h_ago": 0.049,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        35.53,
+        24.31
+      ],
+      "n_recent_quakes": 15,
+      "extent": [
+        34.57,
+        36.97,
+        22.63,
+        27.13
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000059",
+          "time": "2026-06-30T04:28:00.513649+00:00",
+          "mag": 2.5,
+          "depth_km": 6.4,
+          "lat": 36.642,
+          "lon": 22.627,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc:20260630_0000055",
+          "time": "2026-06-30T04:13:51.903551+00:00",
+          "mag": 4.2,
+          "depth_km": 5.0,
+          "lat": 36.62,
+          "lon": 22.703,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc_2019074",
+          "time": "2026-06-30T03:30:20.120000+00:00",
+          "mag": 2.9,
+          "depth_km": 34.2,
+          "lat": 34.66,
+          "lon": 23.712,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc_2018902",
+          "time": "2026-06-29T19:27:20.616675+00:00",
+          "mag": 3.6,
+          "depth_km": 7.6,
+          "lat": 35.187,
+          "lon": 27.127,
+          "place": "DODECANESE ISLANDS, GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000388",
+          "time": "2026-06-28T23:33:09.800000+00:00",
+          "mag": 2.5,
+          "depth_km": 17.0,
+          "lat": 35.12,
+          "lon": 24.44,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000360",
+          "time": "2026-06-28T23:31:09.264292+00:00",
+          "mag": 2.7,
+          "depth_km": 34.4,
+          "lat": 35.088,
+          "lon": 24.48,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "us6000t8vp",
+          "time": "2026-06-28T22:08:28.460000+00:00",
+          "mag": 4.1,
+          "depth_km": 65.8,
+          "lat": 36.97,
+          "lon": 22.82,
+          "place": "10 km ESE of Ger\u00e1ki, Greece"
+        },
+        {
+          "id": "emsc:20260628_0000239",
+          "time": "2026-06-28T17:18:40.420000+00:00",
+          "mag": 2.5,
+          "depth_km": 16.1,
+          "lat": 36.074,
+          "lon": 23.302,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000214",
+          "time": "2026-06-28T15:10:31.930000+00:00",
+          "mag": 3.3,
+          "depth_km": 49.0,
+          "lat": 36.1,
+          "lon": 23.12,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000061",
+          "time": "2026-06-28T05:16:17.200000+00:00",
+          "mag": 2.6,
+          "depth_km": 1.0,
+          "lat": 34.83,
+          "lon": 25.37,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000033",
+          "time": "2026-06-28T02:19:01.200000+00:00",
+          "mag": 2.5,
+          "depth_km": 13.0,
+          "lat": 34.81,
+          "lon": 24.21,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000030",
+          "time": "2026-06-28T01:27:05.200000+00:00",
+          "mag": 2.5,
+          "depth_km": 7.0,
+          "lat": 34.57,
+          "lon": 25.72,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000001",
+          "time": "2026-06-28T00:08:27.540000+00:00",
+          "mag": 2.7,
+          "depth_km": 11.7,
+          "lat": 36.563,
+          "lon": 22.882,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc:20260627_0000258",
+          "time": "2026-06-27T16:13:02.700000+00:00",
+          "mag": 2.5,
+          "depth_km": 1.0,
+          "lat": 34.88,
+          "lon": 26.09,
+          "place": "CRETE, GREECE"
+        },
+        {
+          "id": "emsc:20260627_0000110",
+          "time": "2026-06-27T07:36:53.800000+00:00",
+          "mag": 3.0,
+          "depth_km": 0.0,
+          "lat": 34.86,
+          "lon": 26.1,
+          "place": "CRETE, GREECE"
+        }
+      ]
     },
     {
-      "cell": "indonesia_-02_+095",
-      "zone": "indonesia",
+      "cell": "swarm_+15.1_-94.1",
+      "zone": "mexico_ca",
+      "model_skill": "experimental",
       "lat_range": [
-        -2,
-        8
+        10.077558823529412,
+        20.07755882352941
       ],
       "lon_range": [
-        95,
-        105
+        -99.10679176470587,
+        -89.10679176470587
       ],
-      "escalation_prob_72h": 0.044,
+      "escalation_prob_72h": 0.046,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.7,
-      "prob_6h_ago": 0.044,
+      "prob_6h_ago": 0.045,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        15.08,
+        -94.11
+      ],
+      "n_recent_quakes": 85,
+      "extent": [
+        8.84,
+        18.82,
+        -101.43,
+        -83.99
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000076",
+          "time": "2026-06-30T06:37:46+00:00",
+          "mag": 2.9,
+          "depth_km": 6.0,
+          "lat": 12.93,
+          "lon": -89.92,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc_2018961",
+          "time": "2026-06-29T21:59:42+00:00",
+          "mag": 3.8,
+          "depth_km": 50.0,
+          "lat": 13.88,
+          "lon": -91.48,
+          "place": "OFFSHORE GUATEMALA"
+        },
+        {
+          "id": "emsc_2018959",
+          "time": "2026-06-29T21:28:48+00:00",
+          "mag": 2.5,
+          "depth_km": 21.0,
+          "lat": 10.225,
+          "lon": -85.499,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc_2018954",
+          "time": "2026-06-29T21:27:00+00:00",
+          "mag": 4.4,
+          "depth_km": 52.8,
+          "lat": 12.935,
+          "lon": -88.837,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc_2018960",
+          "time": "2026-06-29T21:15:45+00:00",
+          "mag": 2.6,
+          "depth_km": 29.0,
+          "lat": 10.397,
+          "lon": -85.92,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc:20260629_0000393",
+          "time": "2026-06-29T20:22:34+00:00",
+          "mag": 3.0,
+          "depth_km": 8.0,
+          "lat": 17.165,
+          "lon": -100.927,
+          "place": "OFFSHORE GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000394",
+          "time": "2026-06-29T20:00:20+00:00",
+          "mag": 3.6,
+          "depth_km": 148.3,
+          "lat": 16.788,
+          "lon": -93.948,
+          "place": "CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000395",
+          "time": "2026-06-29T19:53:48+00:00",
+          "mag": 3.5,
+          "depth_km": 38.6,
+          "lat": 16.026,
+          "lon": -97.43,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018883",
+          "time": "2026-06-29T19:04:06+00:00",
+          "mag": 3.4,
+          "depth_km": 5.0,
+          "lat": 11.46,
+          "lon": -87.11,
+          "place": "NEAR COAST OF NICARAGUA"
+        },
+        {
+          "id": "emsc:20260629_0000396",
+          "time": "2026-06-29T18:57:36+00:00",
+          "mag": 3.4,
+          "depth_km": 131.2,
+          "lat": 17.295,
+          "lon": -94.711,
+          "place": "VERACRUZ, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000397",
+          "time": "2026-06-29T18:47:41+00:00",
+          "mag": 3.6,
+          "depth_km": 100.5,
+          "lat": 15.476,
+          "lon": -92.842,
+          "place": "CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000398",
+          "time": "2026-06-29T16:36:47+00:00",
+          "mag": 3.0,
+          "depth_km": 21.0,
+          "lat": 16.701,
+          "lon": -99.5,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2018737",
+          "time": "2026-06-29T13:26:37+00:00",
+          "mag": 4.0,
+          "depth_km": 31.5,
+          "lat": 16.787,
+          "lon": -99.172,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2018746",
+          "time": "2026-06-29T10:48:15+00:00",
+          "mag": 3.5,
+          "depth_km": 57.6,
+          "lat": 18.055,
+          "lon": -97.969,
+          "place": "PUEBLA, MEXICO"
+        },
+        {
+          "id": "emsc_2018747",
+          "time": "2026-06-29T10:39:27+00:00",
+          "mag": 3.4,
+          "depth_km": 106.6,
+          "lat": 16.873,
+          "lon": -94.938,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018748",
+          "time": "2026-06-29T10:17:06+00:00",
+          "mag": 3.5,
+          "depth_km": 24.0,
+          "lat": 15.958,
+          "lon": -97.697,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018749",
+          "time": "2026-06-29T10:07:28+00:00",
+          "mag": 3.4,
+          "depth_km": 125.4,
+          "lat": 17.129,
+          "lon": -94.684,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018750",
+          "time": "2026-06-29T10:01:12+00:00",
+          "mag": 3.6,
+          "depth_km": 12.1,
+          "lat": 14.366,
+          "lon": -93.882,
+          "place": "OFF COAST OF CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc_2018751",
+          "time": "2026-06-29T09:16:20+00:00",
+          "mag": 3.5,
+          "depth_km": 61.9,
+          "lat": 18.03,
+          "lon": -98.526,
+          "place": "PUEBLA, MEXICO"
+        },
+        {
+          "id": "emsc_2018772",
+          "time": "2026-06-29T09:07:30+00:00",
+          "mag": 3.0,
+          "depth_km": 11.0,
+          "lat": 9.815,
+          "lon": -83.993,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc_2018752",
+          "time": "2026-06-29T09:01:34+00:00",
+          "mag": 3.5,
+          "depth_km": 16.2,
+          "lat": 15.908,
+          "lon": -97.714,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018643",
+          "time": "2026-06-29T08:44:43+00:00",
+          "mag": 3.5,
+          "depth_km": 28.0,
+          "lat": 13.12,
+          "lon": -89.62,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc_2018753",
+          "time": "2026-06-29T08:27:33+00:00",
+          "mag": 3.6,
+          "depth_km": 14.4,
+          "lat": 15.994,
+          "lon": -97.673,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018636",
+          "time": "2026-06-29T08:09:51+00:00",
+          "mag": 2.9,
+          "depth_km": 11.0,
+          "lat": 9.146,
+          "lon": -84.077,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc:20260629_0000204",
+          "time": "2026-06-29T07:42:25+00:00",
+          "mag": 3.5,
+          "depth_km": 11.5,
+          "lat": 16.117,
+          "lon": -98.416,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018626",
+          "time": "2026-06-29T07:40:59+00:00",
+          "mag": 3.1,
+          "depth_km": 60.0,
+          "lat": 12.46,
+          "lon": -88.23,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc:20260629_0000205",
+          "time": "2026-06-29T06:22:55+00:00",
+          "mag": 3.0,
+          "depth_km": 22.6,
+          "lat": 16.796,
+          "lon": -99.507,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000208",
+          "time": "2026-06-29T04:51:05+00:00",
+          "mag": 3.7,
+          "depth_km": 65.2,
+          "lat": 17.616,
+          "lon": -97.602,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018575",
+          "time": "2026-06-29T04:33:09+00:00",
+          "mag": 2.7,
+          "depth_km": 158.0,
+          "lat": 12.35,
+          "lon": -86.96,
+          "place": "NICARAGUA"
+        },
+        {
+          "id": "emsc:20260629_0000069",
+          "time": "2026-06-29T04:33:09+00:00",
+          "mag": 3.4,
+          "depth_km": 35.0,
+          "lat": 11.48,
+          "lon": -87.6,
+          "place": "NEAR COAST OF NICARAGUA"
+        },
+        {
+          "id": "emsc:20260629_0000026",
+          "time": "2026-06-29T01:55:21+00:00",
+          "mag": 2.5,
+          "depth_km": 5.0,
+          "lat": 8.84,
+          "lon": -84.123,
+          "place": "OFF COAST OF COSTA RICA"
+        },
+        {
+          "id": "emsc_2018466",
+          "time": "2026-06-28T23:22:38+00:00",
+          "mag": 4.2,
+          "depth_km": 15.5,
+          "lat": 15.899,
+          "lon": -98.13,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018508",
+          "time": "2026-06-28T22:34:14+00:00",
+          "mag": 3.9,
+          "depth_km": 7.2,
+          "lat": 14.46,
+          "lon": -93.38,
+          "place": "OFFSHORE CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000372",
+          "time": "2026-06-28T22:30:30+00:00",
+          "mag": 3.3,
+          "depth_km": 160.9,
+          "lat": 16.548,
+          "lon": -93.396,
+          "place": "CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000373",
+          "time": "2026-06-28T22:26:15+00:00",
+          "mag": 3.2,
+          "depth_km": 9.6,
+          "lat": 16.301,
+          "lon": -98.034,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000374",
+          "time": "2026-06-28T21:54:48+00:00",
+          "mag": 3.0,
+          "depth_km": 44.3,
+          "lat": 16.993,
+          "lon": -99.017,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2018512",
+          "time": "2026-06-28T21:47:37+00:00",
+          "mag": 3.9,
+          "depth_km": 70.0,
+          "lat": 15.196,
+          "lon": -93.427,
+          "place": "OFFSHORE CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000376",
+          "time": "2026-06-28T21:39:24+00:00",
+          "mag": 3.3,
+          "depth_km": 31.6,
+          "lat": 17.346,
+          "lon": -101.112,
+          "place": "OFFSHORE GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2018409",
+          "time": "2026-06-28T20:55:43+00:00",
+          "mag": 3.9,
+          "depth_km": 39.0,
+          "lat": 13.97,
+          "lon": -92.22,
+          "place": "OFFSHORE GUATEMALA"
+        },
+        {
+          "id": "emsc_2018514",
+          "time": "2026-06-28T20:34:06+00:00",
+          "mag": 3.7,
+          "depth_km": 19.3,
+          "lat": 15.977,
+          "lon": -97.689,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000378",
+          "time": "2026-06-28T20:24:11+00:00",
+          "mag": 3.1,
+          "depth_km": 20.7,
+          "lat": 16.992,
+          "lon": -99.995,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000379",
+          "time": "2026-06-28T20:12:08+00:00",
+          "mag": 3.4,
+          "depth_km": 59.5,
+          "lat": 17.787,
+          "lon": -97.891,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000380",
+          "time": "2026-06-28T19:39:53+00:00",
+          "mag": 4.0,
+          "depth_km": 24.9,
+          "lat": 15.824,
+          "lon": -95.199,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000382",
+          "time": "2026-06-28T18:12:59+00:00",
+          "mag": 3.6,
+          "depth_km": 36.6,
+          "lat": 17.308,
+          "lon": -100.797,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000181",
+          "time": "2026-06-28T13:28:16+00:00",
+          "mag": 3.1,
+          "depth_km": 27.0,
+          "lat": 13.3,
+          "lon": -90.14,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc:20260628_0000167",
+          "time": "2026-06-28T12:48:07+00:00",
+          "mag": 3.0,
+          "depth_km": 48.0,
+          "lat": 10.85,
+          "lon": -86.95,
+          "place": "OFF COAST OF COSTA RICA"
+        },
+        {
+          "id": "emsc_2018263",
+          "time": "2026-06-28T10:50:12+00:00",
+          "mag": 3.7,
+          "depth_km": 131.4,
+          "lat": 16.693,
+          "lon": -94.056,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000128",
+          "time": "2026-06-28T10:40:05+00:00",
+          "mag": 2.8,
+          "depth_km": 35.0,
+          "lat": 11.63,
+          "lon": -86.55,
+          "place": "NEAR COAST OF NICARAGUA"
+        },
+        {
+          "id": "emsc_2018264",
+          "time": "2026-06-28T10:35:07+00:00",
+          "mag": 3.9,
+          "depth_km": 15.8,
+          "lat": 14.746,
+          "lon": -93.947,
+          "place": "OFF COAST OF CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc_2018266",
+          "time": "2026-06-28T10:04:15+00:00",
+          "mag": 3.6,
+          "depth_km": 5.0,
+          "lat": 17.082,
+          "lon": -100.102,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2018267",
+          "time": "2026-06-28T09:59:06+00:00",
+          "mag": 3.8,
+          "depth_km": 5.0,
+          "lat": 16.121,
+          "lon": -98.203,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2018269",
+          "time": "2026-06-28T09:49:02+00:00",
+          "mag": 3.5,
+          "depth_km": 56.1,
+          "lat": 17.851,
+          "lon": -99.404,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000091",
+          "time": "2026-06-28T08:35:11+00:00",
+          "mag": 2.8,
+          "depth_km": 17.0,
+          "lat": 10.172,
+          "lon": -86.216,
+          "place": "OFF COAST OF COSTA RICA"
+        },
+        {
+          "id": "emsc:20260628_0000200",
+          "time": "2026-06-28T08:32:26+00:00",
+          "mag": 3.0,
+          "depth_km": 27.3,
+          "lat": 15.934,
+          "lon": -97.643,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000085",
+          "time": "2026-06-28T08:19:28+00:00",
+          "mag": 3.1,
+          "depth_km": 35.0,
+          "lat": 12.79,
+          "lon": -88.32,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc:20260628_0000201",
+          "time": "2026-06-28T08:10:01+00:00",
+          "mag": 3.3,
+          "depth_km": 56.1,
+          "lat": 18.154,
+          "lon": -100.478,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000202",
+          "time": "2026-06-28T08:06:51+00:00",
+          "mag": 3.2,
+          "depth_km": 31.5,
+          "lat": 17.082,
+          "lon": -99.825,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000072",
+          "time": "2026-06-28T06:49:28+00:00",
+          "mag": 2.9,
+          "depth_km": 22.0,
+          "lat": 9.296,
+          "lon": -84.242,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc:20260628_0000203",
+          "time": "2026-06-28T05:49:39+00:00",
+          "mag": 3.8,
+          "depth_km": 10.0,
+          "lat": 13.999,
+          "lon": -92.769,
+          "place": "OFFSHORE CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000032",
+          "time": "2026-06-28T03:16:39+00:00",
+          "mag": 3.1,
+          "depth_km": 1.0,
+          "lat": 15.36,
+          "lon": -91.24,
+          "place": "GUATEMALA"
+        },
+        {
+          "id": "emsc:20260628_0000010",
+          "time": "2026-06-28T00:45:49+00:00",
+          "mag": 2.8,
+          "depth_km": 5.0,
+          "lat": 13.53,
+          "lon": -91.19,
+          "place": "OFFSHORE GUATEMALA"
+        },
+        {
+          "id": "emsc_2018066",
+          "time": "2026-06-27T23:00:04+00:00",
+          "mag": 3.5,
+          "depth_km": 143.8,
+          "lat": 17.164,
+          "lon": -94.426,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000344",
+          "time": "2026-06-27T22:07:54+00:00",
+          "mag": 3.4,
+          "depth_km": 106.8,
+          "lat": 17.056,
+          "lon": -95.303,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000346",
+          "time": "2026-06-27T21:20:40+00:00",
+          "mag": 3.3,
+          "depth_km": 18.6,
+          "lat": 16.654,
+          "lon": -99.479,
+          "place": "OFFSHORE GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000347",
+          "time": "2026-06-27T20:48:58+00:00",
+          "mag": 3.7,
+          "depth_km": 17.1,
+          "lat": 15.364,
+          "lon": -94.854,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000350",
+          "time": "2026-06-27T18:26:23+00:00",
+          "mag": 3.4,
+          "depth_km": 69.4,
+          "lat": 17.744,
+          "lon": -97.368,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000351",
+          "time": "2026-06-27T18:09:29+00:00",
+          "mag": 3.7,
+          "depth_km": 5.0,
+          "lat": 15.563,
+          "lon": -96.16,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000279",
+          "time": "2026-06-27T18:04:58+00:00",
+          "mag": 2.9,
+          "depth_km": 10.0,
+          "lat": 10.425,
+          "lon": -85.047,
+          "place": "COSTA RICA"
+        },
+        {
+          "id": "emsc:20260627_0000352",
+          "time": "2026-06-27T17:48:44+00:00",
+          "mag": 3.7,
+          "depth_km": 148.9,
+          "lat": 17.565,
+          "lon": -94.694,
+          "place": "VERACRUZ, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000353",
+          "time": "2026-06-27T16:05:28+00:00",
+          "mag": 3.5,
+          "depth_km": 129.7,
+          "lat": 17.292,
+          "lon": -95.189,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000354",
+          "time": "2026-06-27T15:21:37+00:00",
+          "mag": 3.7,
+          "depth_km": 89.0,
+          "lat": 15.243,
+          "lon": -92.962,
+          "place": "OFFSHORE CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000173",
+          "time": "2026-06-27T11:43:30+00:00",
+          "mag": 3.1,
+          "depth_km": 12.0,
+          "lat": 10.55,
+          "lon": -86.68,
+          "place": "OFF COAST OF COSTA RICA"
+        },
+        {
+          "id": "emsc_2017854",
+          "time": "2026-06-27T09:57:28+00:00",
+          "mag": 3.6,
+          "depth_km": 16.2,
+          "lat": 15.556,
+          "lon": -94.945,
+          "place": "OFFSHORE OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000125",
+          "time": "2026-06-27T09:47:01+00:00",
+          "mag": 2.7,
+          "depth_km": 25.0,
+          "lat": 13.08,
+          "lon": -89.74,
+          "place": "OFFSHORE EL SALVADOR"
+        },
+        {
+          "id": "emsc:20260627_0000206",
+          "time": "2026-06-27T09:45:07+00:00",
+          "mag": 3.3,
+          "depth_km": 5.0,
+          "lat": 18.82,
+          "lon": -99.053,
+          "place": "MORELOS, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000207",
+          "time": "2026-06-27T09:42:49+00:00",
+          "mag": 3.0,
+          "depth_km": 48.7,
+          "lat": 16.954,
+          "lon": -98.765,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2017857",
+          "time": "2026-06-27T09:31:25+00:00",
+          "mag": 3.6,
+          "depth_km": 13.2,
+          "lat": 17.346,
+          "lon": -101.34,
+          "place": "OFFSHORE GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc_2017858",
+          "time": "2026-06-27T09:05:24+00:00",
+          "mag": 3.7,
+          "depth_km": 2.4,
+          "lat": 15.999,
+          "lon": -95.686,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc_2017859",
+          "time": "2026-06-27T08:58:23+00:00",
+          "mag": 3.7,
+          "depth_km": 17.3,
+          "lat": 15.306,
+          "lon": -94.675,
+          "place": "OFF COAST OF OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000111",
+          "time": "2026-06-27T08:22:55+00:00",
+          "mag": 3.4,
+          "depth_km": 32.0,
+          "lat": 12.02,
+          "lon": -89.12,
+          "place": "OFF THE COAST OF EL SALVADOR"
+        },
+        {
+          "id": "emsc:20260627_0000211",
+          "time": "2026-06-27T08:00:05+00:00",
+          "mag": 3.6,
+          "depth_km": 104.5,
+          "lat": 16.994,
+          "lon": -95.106,
+          "place": "OAXACA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000212",
+          "time": "2026-06-27T07:44:54+00:00",
+          "mag": 3.1,
+          "depth_km": 27.3,
+          "lat": 16.86,
+          "lon": -98.974,
+          "place": "GUERRERO, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000213",
+          "time": "2026-06-27T07:37:36+00:00",
+          "mag": 3.5,
+          "depth_km": 93.6,
+          "lat": 15.86,
+          "lon": -94.071,
+          "place": "OFFSHORE CHIAPAS, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000214",
+          "time": "2026-06-27T06:24:11+00:00",
+          "mag": 3.9,
+          "depth_km": 9.5,
+          "lat": 15.441,
+          "lon": -91.937,
+          "place": "GUATEMALA"
+        },
+        {
+          "id": "emsc:20260627_0000215",
+          "time": "2026-06-27T06:12:15+00:00",
+          "mag": 3.2,
+          "depth_km": 13.5,
+          "lat": 17.427,
+          "lon": -101.434,
+          "place": "OFFSHORE GUERRERO, MEXICO"
+        }
+      ]
     },
     {
-      "cell": "indonesia_-02_+115",
-      "zone": "indonesia",
+      "cell": "swarm_+38.6_+22.0",
+      "zone": "mediterranean",
+      "model_skill": "experimental",
       "lat_range": [
-        -2,
-        8
+        33.578361538461536,
+        43.578361538461536
       ],
       "lon_range": [
-        115,
-        125
+        17.023415384615387,
+        27.023415384615387
       ],
-      "escalation_prob_72h": 0.044,
+      "escalation_prob_72h": 0.046,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.7,
-      "prob_6h_ago": 0.044,
+      "prob_6h_ago": 0.045,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        38.58,
+        22.02
+      ],
+      "n_recent_quakes": 13,
+      "extent": [
+        37.68,
+        39.32,
+        20.34,
+        23.41
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000051",
+          "time": "2026-06-30T03:15:00.820000+00:00",
+          "mag": 2.5,
+          "depth_km": 16.8,
+          "lat": 39.317,
+          "lon": 21.521,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc_2019067",
+          "time": "2026-06-30T03:15:00.465646+00:00",
+          "mag": 2.5,
+          "depth_km": 16.8,
+          "lat": 39.317,
+          "lon": 21.521,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260630_0000074",
+          "time": "2026-06-30T03:14:59.580000+00:00",
+          "mag": 2.5,
+          "depth_km": 16.8,
+          "lat": 39.317,
+          "lon": 21.521,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260630_0000024",
+          "time": "2026-06-30T01:03:50.420000+00:00",
+          "mag": 2.7,
+          "depth_km": 16.2,
+          "lat": 38.714,
+          "lon": 23.386,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc_2018976",
+          "time": "2026-06-29T22:45:21.540000+00:00",
+          "mag": 2.8,
+          "depth_km": 63.9,
+          "lat": 38.381,
+          "lon": 22.195,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc_2018807",
+          "time": "2026-06-29T15:43:22.475091+00:00",
+          "mag": 2.7,
+          "depth_km": 24.2,
+          "lat": 37.747,
+          "lon": 21.348,
+          "place": "SOUTHERN GREECE"
+        },
+        {
+          "id": "emsc_2018561",
+          "time": "2026-06-29T03:55:52.396930+00:00",
+          "mag": 2.6,
+          "depth_km": 8.7,
+          "lat": 38.716,
+          "lon": 23.396,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260629_0000059",
+          "time": "2026-06-29T03:55:51.310000+00:00",
+          "mag": 2.7,
+          "depth_km": 8.7,
+          "lat": 38.716,
+          "lon": 23.396,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000235",
+          "time": "2026-06-28T16:54:13.690000+00:00",
+          "mag": 2.7,
+          "depth_km": 13.8,
+          "lat": 38.112,
+          "lon": 20.453,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260628_0000208",
+          "time": "2026-06-28T14:29:33.010000+00:00",
+          "mag": 2.7,
+          "depth_km": 17.5,
+          "lat": 38.716,
+          "lon": 23.402,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260627_0000250",
+          "time": "2026-06-27T16:23:51.120000+00:00",
+          "mag": 2.5,
+          "depth_km": 14.0,
+          "lat": 38.098,
+          "lon": 20.416,
+          "place": "GREECE"
+        },
+        {
+          "id": "emsc:20260627_0000120",
+          "time": "2026-06-27T09:16:34.190000+00:00",
+          "mag": 2.9,
+          "depth_km": 16.4,
+          "lat": 37.679,
+          "lon": 20.337,
+          "place": "IONIAN SEA"
+        },
+        {
+          "id": "emsc:20260627_0000114",
+          "time": "2026-06-27T09:01:58.740000+00:00",
+          "mag": 3.2,
+          "depth_km": 18.5,
+          "lat": 38.688,
+          "lon": 23.414,
+          "place": "GREECE"
+        }
+      ]
     },
     {
-      "cell": "south_america_-40_-072",
-      "zone": "south_america",
+      "cell": "swarm_+39.0_+25.9",
+      "zone": "mediterranean",
+      "model_skill": "experimental",
       "lat_range": [
-        -40,
-        -30
+        34.0005375,
+        44.0005375
       ],
       "lon_range": [
-        -72,
-        -62
+        20.871050000000004,
+        30.871050000000004
       ],
-      "escalation_prob_72h": 0.044,
+      "escalation_prob_72h": 0.046,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.7,
-      "prob_6h_ago": 0.044,
+      "prob_6h_ago": 0.045,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        39.0,
+        25.87
+      ],
+      "n_recent_quakes": 8,
+      "extent": [
+        36.68,
+        40.07,
+        25.39,
+        26.48
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018990",
+          "time": "2026-06-29T23:35:13+00:00",
+          "mag": 2.9,
+          "depth_km": 11.0,
+          "lat": 40.066,
+          "lon": 25.394,
+          "place": "AEGEAN SEA"
+        },
+        {
+          "id": "emsc:20260629_0000381",
+          "time": "2026-06-29T23:34:55.590000+00:00",
+          "mag": 3.0,
+          "depth_km": 11.6,
+          "lat": 39.027,
+          "lon": 25.962,
+          "place": "AEGEAN SEA"
+        },
+        {
+          "id": "emsc_2018972",
+          "time": "2026-06-29T22:40:19.030000+00:00",
+          "mag": 2.6,
+          "depth_km": 17.2,
+          "lat": 36.682,
+          "lon": 25.762,
+          "place": "DODECANESE ISLANDS, GREECE"
+        },
+        {
+          "id": "emsc:20260629_0000268",
+          "time": "2026-06-29T17:11:46.570000+00:00",
+          "mag": 2.8,
+          "depth_km": 14.5,
+          "lat": 39.661,
+          "lon": 25.544,
+          "place": "AEGEAN SEA"
+        },
+        {
+          "id": "emsc_2018840",
+          "time": "2026-06-29T17:11:46.370000+00:00",
+          "mag": 2.8,
+          "depth_km": 14.5,
+          "lat": 39.661,
+          "lon": 25.544,
+          "place": "AEGEAN SEA"
+        },
+        {
+          "id": "emsc_2018767",
+          "time": "2026-06-29T14:13:51.630000+00:00",
+          "mag": 2.5,
+          "depth_km": 11.2,
+          "lat": 39.641,
+          "lon": 25.979,
+          "place": "AEGEAN SEA"
+        },
+        {
+          "id": "emsc:20260628_0000150",
+          "time": "2026-06-28T11:43:30.290000+00:00",
+          "mag": 2.7,
+          "depth_km": 16.0,
+          "lat": 37.84,
+          "lon": 26.48,
+          "place": "DODECANESE ISLANDS, GREECE"
+        },
+        {
+          "id": "us6000t8na",
+          "time": "2026-06-27T10:27:38.795000+00:00",
+          "mag": 4.4,
+          "depth_km": 10.0,
+          "lat": 39.426,
+          "lon": 26.305,
+          "place": "7 km SSW of Behram, Turkey"
+        }
+      ]
     },
     {
-      "cell": "south_america_+00_-082",
-      "zone": "south_america",
+      "cell": "swarm_+40.9_+20.4",
+      "zone": "mediterranean",
+      "model_skill": "experimental",
       "lat_range": [
-        0,
-        7
+        35.88122,
+        45.88122
       ],
       "lon_range": [
-        -82,
-        -72
+        15.350699999999996,
+        25.350699999999996
       ],
-      "escalation_prob_72h": 0.044,
+      "escalation_prob_72h": 0.046,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.7,
-      "prob_6h_ago": 0.044,
+      "prob_6h_ago": 0.045,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        40.88,
+        20.35
+      ],
+      "n_recent_quakes": 5,
+      "extent": [
+        40.53,
+        41.88,
+        19.72,
+        20.92
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018594",
+          "time": "2026-06-29T05:36:10.290000+00:00",
+          "mag": 3.2,
+          "depth_km": 15.0,
+          "lat": 40.649,
+          "lon": 20.701,
+          "place": "ALBANIA"
+        },
+        {
+          "id": "emsc:20260629_0000085",
+          "time": "2026-06-29T05:36:09.410000+00:00",
+          "mag": 3.2,
+          "depth_km": 0.0,
+          "lat": 40.66,
+          "lon": 20.64,
+          "place": "ALBANIA"
+        },
+        {
+          "id": "emsc:20260628_0000333",
+          "time": "2026-06-28T22:06:52.830000+00:00",
+          "mag": 2.9,
+          "depth_km": 5.0,
+          "lat": 41.882,
+          "lon": 20.923,
+          "place": "REPUBLIC OF NORTH MACEDONIA"
+        },
+        {
+          "id": "emsc:20260627_0000188",
+          "time": "2026-06-27T12:43:01.430000+00:00",
+          "mag": 3.2,
+          "depth_km": 6.7,
+          "lat": 40.685,
+          "lon": 19.77,
+          "place": "ALBANIA"
+        },
+        {
+          "id": "emsc:20260627_0000084",
+          "time": "2026-06-27T06:38:16.070000+00:00",
+          "mag": 2.9,
+          "depth_km": 0.0,
+          "lat": 40.53,
+          "lon": 19.72,
+          "place": "ALBANIA"
+        }
+      ]
     },
     {
-      "cell": "caribbean_+10_-067",
+      "cell": "swarm_+10.6_-67.8",
       "zone": "caribbean",
+      "model_skill": "experimental",
       "lat_range": [
-        10,
-        20
+        5.648174999999998,
+        15.648174999999998
       ],
       "lon_range": [
-        -67,
-        -60
+        -72.80535,
+        -62.805350000000004
       ],
-      "escalation_prob_72h": 0.044,
+      "escalation_prob_72h": 0.046,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.7,
-      "prob_6h_ago": 0.044,
+      "prob_6h_ago": 0.045,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        10.65,
+        -67.81
+      ],
+      "n_recent_quakes": 4,
+      "extent": [
+        10.45,
+        10.86,
+        -68.49,
+        -66.84
+      ],
+      "quakes": [
+        {
+          "id": "us6000t8yf",
+          "time": "2026-06-29T11:01:03.516000+00:00",
+          "mag": 4.6,
+          "depth_km": 10.0,
+          "lat": 10.86,
+          "lon": -66.844,
+          "place": "27 km N of Caraballeda, Venezuela"
+        },
+        {
+          "id": "us6000t8sx",
+          "time": "2026-06-28T09:33:58.852000+00:00",
+          "mag": 4.3,
+          "depth_km": 10.0,
+          "lat": 10.45,
+          "lon": -68.377,
+          "place": "19 km WSW of Mor\u00f3n, Venezuela"
+        },
+        {
+          "id": "us6000t8su",
+          "time": "2026-06-28T08:46:10.376000+00:00",
+          "mag": 4.5,
+          "depth_km": 10.0,
+          "lat": 10.681,
+          "lon": -68.49,
+          "place": "20 km W of Boca de Aroa, Venezuela"
+        },
+        {
+          "id": "us6000t8q8",
+          "time": "2026-06-27T19:20:36.606000+00:00",
+          "mag": 4.8,
+          "depth_km": 10.0,
+          "lat": 10.602,
+          "lon": -67.511,
+          "place": "35 km NNE of El Lim\u00f3n, Venezuela"
+        }
+      ]
     },
     {
-      "cell": "indonesia_-12_+135",
+      "cell": "swarm_+2.0_+97.9",
       "zone": "indonesia",
+      "model_skill": "experimental",
       "lat_range": [
-        -12,
-        -2
+        -3.0420000000000003,
+        6.958
       ],
       "lon_range": [
-        135,
-        140
+        92.86,
+        102.86
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.042,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        1.96,
+        97.86
+      ],
+      "n_recent_quakes": 5,
+      "extent": [
+        1.19,
+        2.39,
+        96.42,
+        99.0
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018769",
+          "time": "2026-06-29T14:29:32+00:00",
+          "mag": 3.3,
+          "depth_km": 130.0,
+          "lat": 2.28,
+          "lon": 99.0,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018613",
+          "time": "2026-06-29T06:57:55+00:00",
+          "mag": 3.4,
+          "depth_km": 10.0,
+          "lat": 2.2,
+          "lon": 96.42,
+          "place": "SIMEULUE, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000306",
+          "time": "2026-06-27T21:01:12+00:00",
+          "mag": 2.5,
+          "depth_km": 69.0,
+          "lat": 1.19,
+          "lon": 98.87,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000263",
+          "time": "2026-06-27T17:48:57+00:00",
+          "mag": 2.5,
+          "depth_km": 33.0,
+          "lat": 2.39,
+          "lon": 97.83,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000080",
+          "time": "2026-06-27T06:14:21+00:00",
+          "mag": 2.6,
+          "depth_km": 10.0,
+          "lat": 1.73,
+          "lon": 97.18,
+          "place": "NIAS REGION, INDONESIA"
+        }
+      ]
     },
     {
-      "cell": "indonesia_-02_+135",
+      "cell": "swarm_+4.1_+97.2",
       "zone": "indonesia",
+      "model_skill": "experimental",
       "lat_range": [
-        -2,
-        8
+        -0.8877777777777771,
+        9.112222222222222
       ],
       "lon_range": [
-        135,
-        140
+        92.16777777777777,
+        102.16777777777777
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.042,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        4.11,
+        97.17
+      ],
+      "n_recent_quakes": 9,
+      "extent": [
+        3.77,
+        4.76,
+        96.17,
+        97.46
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2019061",
+          "time": "2026-06-30T02:47:40+00:00",
+          "mag": 2.8,
+          "depth_km": 3.0,
+          "lat": 4.76,
+          "lon": 96.17,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018950",
+          "time": "2026-06-29T21:17:52+00:00",
+          "mag": 2.9,
+          "depth_km": 5.0,
+          "lat": 4.09,
+          "lon": 97.42,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc_2018920",
+          "time": "2026-06-29T19:52:48+00:00",
+          "mag": 2.5,
+          "depth_km": 3.0,
+          "lat": 3.9,
+          "lon": 97.13,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260629_0000014",
+          "time": "2026-06-29T01:17:17+00:00",
+          "mag": 2.5,
+          "depth_km": 5.0,
+          "lat": 3.77,
+          "lon": 97.08,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260628_0000062",
+          "time": "2026-06-28T06:00:58+00:00",
+          "mag": 2.8,
+          "depth_km": 10.0,
+          "lat": 4.03,
+          "lon": 97.26,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000332",
+          "time": "2026-06-27T23:37:53+00:00",
+          "mag": 2.8,
+          "depth_km": 5.0,
+          "lat": 4.16,
+          "lon": 97.41,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000187",
+          "time": "2026-06-27T12:29:37+00:00",
+          "mag": 2.6,
+          "depth_km": 17.0,
+          "lat": 3.93,
+          "lon": 97.15,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000178",
+          "time": "2026-06-27T12:07:38+00:00",
+          "mag": 3.3,
+          "depth_km": 5.0,
+          "lat": 4.16,
+          "lon": 97.46,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        },
+        {
+          "id": "emsc:20260627_0000112",
+          "time": "2026-06-27T08:32:16+00:00",
+          "mag": 2.5,
+          "depth_km": 10.0,
+          "lat": 4.21,
+          "lon": 97.43,
+          "place": "NORTHERN SUMATRA, INDONESIA"
+        }
+      ]
     },
     {
-      "cell": "south_america_-20_-072",
+      "cell": "swarm_+54.2_-161.3",
+      "zone": "alaska",
+      "model_skill": "validated",
+      "lat_range": [
+        49.241233333333334,
+        59.241233333333334
+      ],
+      "lon_range": [
+        -166.33916666666667,
+        -156.33916666666667
+      ],
+      "escalation_prob_72h": 0.042,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        54.24,
+        -161.34
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        54.2,
+        54.27,
+        -161.76,
+        -160.79
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018793",
+          "time": "2026-06-29T15:11:41.319000+00:00",
+          "mag": 2.9,
+          "depth_km": 35.0,
+          "lat": 54.259,
+          "lon": -161.46,
+          "place": "ALASKA PENINSULA"
+        },
+        {
+          "id": "us6000t8uw",
+          "time": "2026-06-28T19:10:02.523000+00:00",
+          "mag": 3.3,
+          "depth_km": 35.0,
+          "lat": 54.269,
+          "lon": -161.763,
+          "place": "95 km SSE of King Cove, Alaska"
+        },
+        {
+          "id": "us6000t8tw",
+          "time": "2026-06-28T15:04:06.524000+00:00",
+          "mag": 3.6,
+          "depth_km": 30.1,
+          "lat": 54.196,
+          "lon": -160.795,
+          "place": "128 km S of Sand Point, Alaska"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_+19.2_-103.9",
+      "zone": "mexico_ca",
+      "model_skill": "experimental",
+      "lat_range": [
+        14.189833333333336,
+        24.189833333333336
+      ],
+      "lon_range": [
+        -108.93708333333335,
+        -98.93708333333335
+      ],
+      "escalation_prob_72h": 0.042,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        19.19,
+        -103.94
+      ],
+      "n_recent_quakes": 12,
+      "extent": [
+        18.42,
+        19.75,
+        -105.35,
+        -102.1
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260629_0000392",
+          "time": "2026-06-29T22:57:50+00:00",
+          "mag": 3.2,
+          "depth_km": 3.5,
+          "lat": 19.412,
+          "lon": -104.293,
+          "place": "JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000206",
+          "time": "2026-06-29T05:27:30+00:00",
+          "mag": 3.0,
+          "depth_km": 10.4,
+          "lat": 19.002,
+          "lon": -104.781,
+          "place": "OFFSHORE JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260629_0000207",
+          "time": "2026-06-29T05:18:34+00:00",
+          "mag": 3.8,
+          "depth_km": 17.2,
+          "lat": 19.016,
+          "lon": -104.806,
+          "place": "OFFSHORE JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000381",
+          "time": "2026-06-28T18:57:46+00:00",
+          "mag": 3.3,
+          "depth_km": 28.5,
+          "lat": 18.423,
+          "lon": -103.738,
+          "place": "OFFSHORE MICHOACAN, MEXICO"
+        },
+        {
+          "id": "emsc_2018302",
+          "time": "2026-06-28T15:54:52+00:00",
+          "mag": 4.0,
+          "depth_km": 5.0,
+          "lat": 19.549,
+          "lon": -105.353,
+          "place": "OFFSHORE JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000194",
+          "time": "2026-06-28T10:11:53+00:00",
+          "mag": 3.2,
+          "depth_km": 6.6,
+          "lat": 18.899,
+          "lon": -103.803,
+          "place": "COLIMA, MEXICO"
+        },
+        {
+          "id": "emsc_2018268",
+          "time": "2026-06-28T09:56:16+00:00",
+          "mag": 3.8,
+          "depth_km": 3.7,
+          "lat": 18.966,
+          "lon": -102.099,
+          "place": "MICHOACAN, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000199",
+          "time": "2026-06-28T08:46:50+00:00",
+          "mag": 3.2,
+          "depth_km": 8.1,
+          "lat": 18.959,
+          "lon": -103.943,
+          "place": "COLIMA, MEXICO"
+        },
+        {
+          "id": "emsc:20260628_0000204",
+          "time": "2026-06-28T05:25:15+00:00",
+          "mag": 3.3,
+          "depth_km": 5.7,
+          "lat": 19.094,
+          "lon": -104.132,
+          "place": "COLIMA, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000343",
+          "time": "2026-06-27T22:55:10+00:00",
+          "mag": 3.3,
+          "depth_km": 11.1,
+          "lat": 19.715,
+          "lon": -102.965,
+          "place": "JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000345",
+          "time": "2026-06-27T21:24:42+00:00",
+          "mag": 3.0,
+          "depth_km": 13.6,
+          "lat": 19.491,
+          "lon": -104.15,
+          "place": "JALISCO, MEXICO"
+        },
+        {
+          "id": "emsc:20260627_0000349",
+          "time": "2026-06-27T18:46:18+00:00",
+          "mag": 3.5,
+          "depth_km": 66.0,
+          "lat": 19.752,
+          "lon": -103.182,
+          "place": "JALISCO, MEXICO"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_+8.0_-82.5",
+      "zone": "mexico_ca",
+      "model_skill": "experimental",
+      "lat_range": [
+        2.9734000000000007,
+        12.973400000000002
+      ],
+      "lon_range": [
+        -87.46820000000001,
+        -77.46820000000001
+      ],
+      "escalation_prob_72h": 0.042,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        7.97,
+        -82.47
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        7.93,
+        8.02,
+        -83.07,
+        -81.67
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000063",
+          "time": "2026-06-30T04:54:36+00:00",
+          "mag": 3.3,
+          "depth_km": 6.0,
+          "lat": 7.969,
+          "lon": -82.667,
+          "place": "SOUTH OF PANAMA"
+        },
+        {
+          "id": "emsc:20260628_0000090",
+          "time": "2026-06-28T08:40:46+00:00",
+          "mag": 2.6,
+          "depth_km": 10.0,
+          "lat": 8.021,
+          "lon": -81.671,
+          "place": "PANAMA"
+        },
+        {
+          "id": "emsc_2017978",
+          "time": "2026-06-27T20:34:46+00:00",
+          "mag": 3.5,
+          "depth_km": 13.0,
+          "lat": 7.93,
+          "lon": -83.067,
+          "place": "OFF COAST OF COSTA RICA"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_-38.9_-72.9",
       "zone": "south_america",
+      "model_skill": "validated",
       "lat_range": [
-        -20,
-        -10
+        -43.85333333333333,
+        -33.85333333333333
       ],
       "lon_range": [
-        -72,
-        -62
+        -77.88666666666667,
+        -67.88666666666667
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.042,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        -38.85,
+        -72.89
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        -39.63,
+        -38.14,
+        -73.73,
+        -71.86
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018827",
+          "time": "2026-06-29T16:44:12+00:00",
+          "mag": 2.6,
+          "depth_km": 49.0,
+          "lat": -38.14,
+          "lon": -73.73,
+          "place": "OFFSHORE BIO-BIO, CHILE"
+        },
+        {
+          "id": "emsc_2018812",
+          "time": "2026-06-29T15:57:17+00:00",
+          "mag": 2.9,
+          "depth_km": 124.2,
+          "lat": -39.63,
+          "lon": -71.86,
+          "place": "LOS LAGOS, CHILE"
+        },
+        {
+          "id": "emsc:20260627_0000194",
+          "time": "2026-06-27T13:16:33+00:00",
+          "mag": 3.4,
+          "depth_km": 42.8,
+          "lat": -38.79,
+          "lon": -73.07,
+          "place": "ARAUCANIA, CHILE"
+        }
+      ]
     },
     {
-      "cell": "mexico_ca_+07_-105",
-      "zone": "mexico_ca",
+      "cell": "swarm_+52.0_+176.4",
+      "zone": "w_aleutians",
+      "model_skill": "experimental",
       "lat_range": [
-        7,
-        17
+        47.035333333333334,
+        57.035333333333334
       ],
       "lon_range": [
-        -105,
-        -95
+        171.40753333333336,
+        181.40753333333336
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.042,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        52.04,
+        176.41
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        51.95,
+        52.2,
+        176.27,
+        176.52
+      ],
+      "quakes": [
+        {
+          "id": "aka2026mubool",
+          "time": "2026-06-29T18:48:34.989000+00:00",
+          "mag": 3.9,
+          "depth_km": 5.0,
+          "lat": 51.955,
+          "lon": 176.271,
+          "place": "232 km ESE of Attu Station, Alaska"
+        },
+        {
+          "id": "us6000t8sa",
+          "time": "2026-06-28T03:18:47.190000+00:00",
+          "mag": 4.3,
+          "depth_km": 54.9,
+          "lat": 51.953,
+          "lon": 176.517,
+          "place": "247 km ESE of Attu Station, Alaska"
+        },
+        {
+          "id": "us6000t8pw",
+          "time": "2026-06-27T16:35:34.867000+00:00",
+          "mag": 4.7,
+          "depth_km": 10.0,
+          "lat": 52.198,
+          "lon": 176.434,
+          "place": "231 km ESE of Attu Station, Alaska"
+        }
+      ]
     },
     {
-      "cell": "mexico_ca_+07_-085",
-      "zone": "mexico_ca",
+      "cell": "swarm_+19.2_-155.6",
+      "zone": "19N_156W",
+      "model_skill": "experimental",
       "lat_range": [
-        7,
-        17
+        14.155300507354724,
+        24.155300507354724
       ],
       "lon_range": [
-        -85,
-        -77
+        -160.6296635742185,
+        -150.6296635742185
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.041,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "lift_vs_base": 0.7,
+      "prob_6h_ago": 0.042,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": {
+        "volcano": "Kilauea Volcano",
+        "level": "ADVISORY"
+      },
+      "centroid": [
+        19.16,
+        -155.63
+      ],
+      "n_recent_quakes": 4,
+      "extent": [
+        18.85,
+        19.67,
+        -156.52,
+        -155.23
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018886",
+          "time": "2026-06-29T19:12:24.990000+00:00",
+          "mag": 2.5,
+          "depth_km": 33.7,
+          "lat": 18.962,
+          "lon": -155.411,
+          "place": "HAWAII REGION, HAWAII"
+        },
+        {
+          "id": "hv74992422",
+          "time": "2026-06-28T01:25:35.470000+00:00",
+          "mag": 2.6,
+          "depth_km": 12.7,
+          "lat": 19.675,
+          "lon": -156.517,
+          "place": "54 km W of Kailua-Kona, Hawaii"
+        },
+        {
+          "id": "hv74992162",
+          "time": "2026-06-27T12:29:58.430000+00:00",
+          "mag": 2.5,
+          "depth_km": 30.0,
+          "lat": 19.132,
+          "lon": -155.362,
+          "place": "14 km ESE of P\u0101hala, Hawaii"
+        },
+        {
+          "id": "hv74992132",
+          "time": "2026-06-27T10:55:55.210000+00:00",
+          "mag": 2.6,
+          "depth_km": 9.6,
+          "lat": 18.853,
+          "lon": -155.23,
+          "place": "43 km ESE of Naalehu, Hawaii"
+        }
+      ]
     },
     {
-      "cell": "mexico_ca_+17_-115",
-      "zone": "mexico_ca",
-      "lat_range": [
-        17,
-        25
-      ],
-      "lon_range": [
-        -115,
-        -105
-      ],
-      "escalation_prob_72h": 0.036,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "mexico_ca_+17_-105",
-      "zone": "mexico_ca",
-      "lat_range": [
-        17,
-        25
-      ],
-      "lon_range": [
-        -105,
-        -95
-      ],
-      "escalation_prob_72h": 0.036,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "himalaya_+25_+070",
-      "zone": "himalaya",
-      "lat_range": [
-        25,
-        35
-      ],
-      "lon_range": [
-        70,
-        80
-      ],
-      "escalation_prob_72h": 0.036,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "himalaya_+25_+090",
-      "zone": "himalaya",
-      "lat_range": [
-        25,
-        35
-      ],
-      "lon_range": [
-        90,
-        100
-      ],
-      "escalation_prob_72h": 0.036,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "alaska_+50_-170",
+      "cell": "swarm_+60.8_-151.0",
       "zone": "alaska",
+      "model_skill": "validated",
       "lat_range": [
-        50,
-        60
+        55.80497878787879,
+        65.80497878787878
       ],
       "lon_range": [
-        -170,
-        -160
+        -156.00061515151512,
+        -146.00061515151512
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.039,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
+      "prob_6h_ago": 0.039,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        60.8,
+        -151.0
+      ],
+      "n_recent_quakes": 33,
+      "extent": [
+        58.49,
+        63.5,
+        -153.44,
+        -148.18
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260630_0000073",
+          "time": "2026-06-30T05:40:19.971000+00:00",
+          "mag": 2.9,
+          "depth_km": 32.3,
+          "lat": 61.31,
+          "lon": -149.255,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026muxhjv",
+          "time": "2026-06-30T05:40:19.576000+00:00",
+          "mag": 2.9,
+          "depth_km": 15.2,
+          "lat": 61.274,
+          "lon": -149.365,
+          "place": "12 km ESE of Eagle River, Alaska"
+        },
+        {
+          "id": "emsc:20260629_0000367",
+          "time": "2026-06-29T22:39:51.456000+00:00",
+          "mag": 3.1,
+          "depth_km": 23.5,
+          "lat": 61.652,
+          "lon": -148.177,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mujguq",
+          "time": "2026-06-29T22:39:50.483000+00:00",
+          "mag": 3.1,
+          "depth_km": 7.8,
+          "lat": 61.672,
+          "lon": -148.254,
+          "place": "17 km SE of Chickaloon, Alaska"
+        },
+        {
+          "id": "aka2026mtwkcz",
+          "time": "2026-06-29T16:13:51.159000+00:00",
+          "mag": 2.6,
+          "depth_km": 2.9,
+          "lat": 61.948,
+          "lon": -150.183,
+          "place": "23 km NNW of Willow, Alaska"
+        },
+        {
+          "id": "aka2026mtuxjt",
+          "time": "2026-06-29T15:29:10.326000+00:00",
+          "mag": 3.9,
+          "depth_km": 68.7,
+          "lat": 58.488,
+          "lon": -152.567,
+          "place": "51 km NNE of Aleneva, Alaska"
+        },
+        {
+          "id": "aka2026mtniwc",
+          "time": "2026-06-29T11:42:51.674000+00:00",
+          "mag": 2.6,
+          "depth_km": 134.4,
+          "lat": 59.776,
+          "lon": -153.323,
+          "place": "44 km E of Pedro Bay, Alaska"
+        },
+        {
+          "id": "emsc:20260629_0000189",
+          "time": "2026-06-29T11:42:51.496000+00:00",
+          "mag": 2.6,
+          "depth_km": 134.1,
+          "lat": 59.83,
+          "lon": -153.445,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "emsc:20260629_0000132",
+          "time": "2026-06-29T10:19:31.055000+00:00",
+          "mag": 3.2,
+          "depth_km": 30.7,
+          "lat": 61.198,
+          "lon": -149.595,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "emsc_2018666",
+          "time": "2026-06-29T10:19:30.685492+00:00",
+          "mag": 3.0,
+          "depth_km": 16.9,
+          "lat": 61.209,
+          "lon": -149.648,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "emsc:20260629_0000164",
+          "time": "2026-06-29T09:51:42.001000+00:00",
+          "mag": 2.6,
+          "depth_km": 33.9,
+          "lat": 61.228,
+          "lon": -149.581,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mtjqto",
+          "time": "2026-06-29T09:51:41.057000+00:00",
+          "mag": 2.6,
+          "depth_km": 15.5,
+          "lat": 61.214,
+          "lon": -149.648,
+          "place": "4 km S of Elmendorf Air Force Base, Alaska"
+        },
+        {
+          "id": "aka2026mtaaxl",
+          "time": "2026-06-29T05:03:33.081000+00:00",
+          "mag": 2.8,
+          "depth_km": 58.5,
+          "lat": 60.71,
+          "lon": -150.583,
+          "place": "21 km NNE of Sterling, Alaska"
+        },
+        {
+          "id": "emsc:20260629_0000143",
+          "time": "2026-06-29T05:03:32.733000+00:00",
+          "mag": 2.8,
+          "depth_km": 57.8,
+          "lat": 60.731,
+          "lon": -150.587,
+          "place": "KENAI PENINSULA, ALASKA"
+        },
+        {
+          "id": "aka2026mssvhy",
+          "time": "2026-06-29T01:27:10.673000+00:00",
+          "mag": 2.5,
+          "depth_km": 57.4,
+          "lat": 60.209,
+          "lon": -151.248,
+          "place": "8 km ESE of Clam Gulch, Alaska"
+        },
+        {
+          "id": "emsc:20260629_0000027",
+          "time": "2026-06-29T01:27:10.206000+00:00",
+          "mag": 2.5,
+          "depth_km": 62.3,
+          "lat": 60.184,
+          "lon": -151.324,
+          "place": "KENAI PENINSULA, ALASKA"
+        },
+        {
+          "id": "aka2026msgsis",
+          "time": "2026-06-28T19:23:54.851000+00:00",
+          "mag": 2.6,
+          "depth_km": 56.4,
+          "lat": 61.953,
+          "lon": -150.515,
+          "place": "34 km NW of Willow, Alaska"
+        },
+        {
+          "id": "emsc:20260628_0000275",
+          "time": "2026-06-28T19:23:53.941000+00:00",
+          "mag": 2.7,
+          "depth_km": 57.2,
+          "lat": 61.954,
+          "lon": -150.49,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026msepbu",
+          "time": "2026-06-28T18:20:10.861000+00:00",
+          "mag": 2.8,
+          "depth_km": 52.7,
+          "lat": 59.027,
+          "lon": -152.286,
+          "place": "42 km SSW of Nanwalek, Alaska"
+        },
+        {
+          "id": "emsc:20260628_0000254",
+          "time": "2026-06-28T18:20:10.611000+00:00",
+          "mag": 2.8,
+          "depth_km": 35.0,
+          "lat": 59.022,
+          "lon": -152.288,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mrmtbi",
+          "time": "2026-06-28T09:25:00.689000+00:00",
+          "mag": 2.9,
+          "depth_km": 75.3,
+          "lat": 59.426,
+          "lon": -152.585,
+          "place": "38 km WNW of Nanwalek, Alaska"
+        },
+        {
+          "id": "emsc:20260628_0000116",
+          "time": "2026-06-28T09:25:00.436000+00:00",
+          "mag": 2.9,
+          "depth_km": 76.0,
+          "lat": 59.426,
+          "lon": -152.702,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mrghew",
+          "time": "2026-06-28T06:11:26.486000+00:00",
+          "mag": 2.5,
+          "depth_km": 99.1,
+          "lat": 60.635,
+          "lon": -151.959,
+          "place": "35 km W of Salamatof, Alaska"
+        },
+        {
+          "id": "emsc:20260628_0000117",
+          "time": "2026-06-28T06:11:25.973000+00:00",
+          "mag": 2.5,
+          "depth_km": 100.6,
+          "lat": 60.629,
+          "lon": -151.946,
+          "place": "KENAI PENINSULA, ALASKA"
+        },
+        {
+          "id": "aka2026mraoft",
+          "time": "2026-06-28T03:19:36.986000+00:00",
+          "mag": 2.5,
+          "depth_km": 53.1,
+          "lat": 60.129,
+          "lon": -151.388,
+          "place": "11 km S of Clam Gulch, Alaska"
+        },
+        {
+          "id": "emsc:20260628_0000036",
+          "time": "2026-06-28T03:19:36.679000+00:00",
+          "mag": 2.5,
+          "depth_km": 51.2,
+          "lat": 60.144,
+          "lon": -151.381,
+          "place": "KENAI PENINSULA, ALASKA"
+        },
+        {
+          "id": "emsc:20260627_0000341",
+          "time": "2026-06-27T23:26:46.840000+00:00",
+          "mag": 2.7,
+          "depth_km": 62.6,
+          "lat": 62.815,
+          "lon": -148.896,
+          "place": "CENTRAL ALASKA"
+        },
+        {
+          "id": "aka2026mqsujg",
+          "time": "2026-06-27T23:26:45.262000+00:00",
+          "mag": 2.7,
+          "depth_km": 11.2,
+          "lat": 62.881,
+          "lon": -148.882,
+          "place": "57 km S of Cantwell, Alaska"
+        },
+        {
+          "id": "aka2026mqmypj",
+          "time": "2026-06-27T20:31:56.187000+00:00",
+          "mag": 2.9,
+          "depth_km": 111.0,
+          "lat": 61.532,
+          "lon": -152.021,
+          "place": "60 km SSW of Skwentna, Alaska"
+        },
+        {
+          "id": "emsc:20260627_0000298",
+          "time": "2026-06-27T20:31:55.424000+00:00",
+          "mag": 2.9,
+          "depth_km": 110.8,
+          "lat": 61.57,
+          "lon": -152.089,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mpnjrc",
+          "time": "2026-06-27T07:44:52.405000+00:00",
+          "mag": 3.2,
+          "depth_km": 91.6,
+          "lat": 59.634,
+          "lon": -152.669,
+          "place": "49 km WSW of Anchor Point, Alaska"
+        },
+        {
+          "id": "emsc:20260627_0000098",
+          "time": "2026-06-27T07:44:52.269000+00:00",
+          "mag": 3.2,
+          "depth_km": 92.2,
+          "lat": 59.657,
+          "lon": -152.718,
+          "place": "SOUTHERN ALASKA"
+        },
+        {
+          "id": "aka2026mpnflw",
+          "time": "2026-06-27T07:39:55.361000+00:00",
+          "mag": 2.5,
+          "depth_km": 0.2,
+          "lat": 63.499,
+          "lon": -151.422,
+          "place": "15 km ESE of Denali National Park, Alaska"
+        }
+      ]
     },
     {
-      "cell": "alaska_+50_-160",
-      "zone": "alaska",
+      "cell": "swarm_+18.7_-65.2",
+      "zone": "caribbean",
+      "model_skill": "experimental",
       "lat_range": [
-        50,
-        60
+        13.7242,
+        23.7242
       ],
       "lon_range": [
-        -160,
-        -150
+        -70.18767083333333,
+        -60.18767083333333
       ],
-      "escalation_prob_72h": 0.036,
+      "escalation_prob_72h": 0.034,
       "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "new_zealand_-38_+175",
-      "zone": "new_zealand",
-      "lat_range": [
-        -38,
-        -34
-      ],
-      "lon_range": [
-        175,
-        180
-      ],
-      "escalation_prob_72h": 0.036,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.6,
-      "prob_6h_ago": 0.036,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "new_zealand_-48_+175",
-      "zone": "new_zealand",
-      "lat_range": [
-        -48,
-        -38
-      ],
-      "lon_range": [
-        175,
-        180
-      ],
-      "escalation_prob_72h": 0.023,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.4,
-      "prob_6h_ago": 0.023,
+      "lift_vs_base": 0.5,
+      "prob_6h_ago": 0.034,
       "trend_6h": 0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        18.72,
+        -65.19
+      ],
+      "n_recent_quakes": 16,
+      "extent": [
+        17.88,
+        19.66,
+        -67.11,
+        -63.5
+      ],
+      "quakes": [
+        {
+          "id": "pr2026181000",
+          "time": "2026-06-30T01:03:21.150000+00:00",
+          "mag": 3.7,
+          "depth_km": 25.0,
+          "lat": 19.573,
+          "lon": -64.389,
+          "place": "143 km NNE of Cruz Bay, U.S. Virgin Islands"
+        },
+        {
+          "id": "us6000t947",
+          "time": "2026-06-30T00:57:24.382000+00:00",
+          "mag": 2.9,
+          "depth_km": 35.0,
+          "lat": 19.47,
+          "lon": -64.485,
+          "place": "130 km NNE of Cruz Bay, U.S. Virgin Islands"
+        },
+        {
+          "id": "emsc_2018734",
+          "time": "2026-06-29T13:23:08.600000+00:00",
+          "mag": 2.6,
+          "depth_km": 11.2,
+          "lat": 17.971,
+          "lon": -66.817,
+          "place": "PUERTO RICO"
+        },
+        {
+          "id": "pr2026180000",
+          "time": "2026-06-29T10:31:04.600000+00:00",
+          "mag": 3.9,
+          "depth_km": 36.0,
+          "lat": 19.601,
+          "lon": -64.497,
+          "place": "143 km NNE of Cruz Bay, U.S. Virgin Islands"
+        },
+        {
+          "id": "pr71521898",
+          "time": "2026-06-29T05:54:10.360000+00:00",
+          "mag": 2.6,
+          "depth_km": 10.3,
+          "lat": 17.982,
+          "lon": -66.701,
+          "place": "2 km SE of Tallaboa, Puerto Rico"
+        },
+        {
+          "id": "emsc:20260629_0000162",
+          "time": "2026-06-29T04:05:54.010000+00:00",
+          "mag": 2.5,
+          "depth_km": 11.9,
+          "lat": 17.945,
+          "lon": -66.844,
+          "place": "PUERTO RICO REGION"
+        },
+        {
+          "id": "pr71521873",
+          "time": "2026-06-29T02:58:26.650000+00:00",
+          "mag": 2.7,
+          "depth_km": 5.4,
+          "lat": 17.884,
+          "lon": -65.618,
+          "place": "28 km SSW of Esperanza, Puerto Rico"
+        },
+        {
+          "id": "emsc:20260628_0000185",
+          "time": "2026-06-28T12:09:11.030000+00:00",
+          "mag": 3.4,
+          "depth_km": 24.9,
+          "lat": 18.425,
+          "lon": -64.186,
+          "place": "VIRGIN ISLANDS REGION"
+        },
+        {
+          "id": "us6000t8tc",
+          "time": "2026-06-28T12:09:07.947000+00:00",
+          "mag": 2.8,
+          "depth_km": 10.0,
+          "lat": 18.153,
+          "lon": -64.193,
+          "place": "66 km ESE of Cruz Bay, U.S. Virgin Islands"
+        },
+        {
+          "id": "pr2026179001",
+          "time": "2026-06-28T05:58:40.640000+00:00",
+          "mag": 3.8,
+          "depth_km": 15.0,
+          "lat": 19.635,
+          "lon": -63.769,
+          "place": "173 km NNW of The Valley, Anguilla"
+        },
+        {
+          "id": "pr71521733",
+          "time": "2026-06-28T05:26:33.070000+00:00",
+          "mag": 3.3,
+          "depth_km": 28.9,
+          "lat": 19.457,
+          "lon": -65.821,
+          "place": "113 km NNE of San Juan, Puerto Rico"
+        },
+        {
+          "id": "pr2026179000",
+          "time": "2026-06-28T02:06:20.980000+00:00",
+          "mag": 4.1,
+          "depth_km": 59.0,
+          "lat": 19.663,
+          "lon": -63.504,
+          "place": "166 km NNW of The Valley, Anguilla"
+        },
+        {
+          "id": "emsc:20260627_0000305",
+          "time": "2026-06-27T20:26:18.670000+00:00",
+          "mag": 3.1,
+          "depth_km": 24.9,
+          "lat": 19.35,
+          "lon": -67.108,
+          "place": "PUERTO RICO REGION"
+        },
+        {
+          "id": "pr71521663",
+          "time": "2026-06-27T17:22:05.370000+00:00",
+          "mag": 3.4,
+          "depth_km": 16.4,
+          "lat": 17.895,
+          "lon": -63.948,
+          "place": "79 km WNW of The Bottom, Bonaire, Saint Eustatius and Saba "
+        },
+        {
+          "id": "pr71521648",
+          "time": "2026-06-27T15:00:27.080000+00:00",
+          "mag": 2.7,
+          "depth_km": 15.3,
+          "lat": 18.045,
+          "lon": -64.227,
+          "place": "60 km ENE of Christiansted, U.S. Virgin Islands"
+        },
+        {
+          "id": "pr71521633",
+          "time": "2026-06-27T14:30:08.080000+00:00",
+          "mag": 2.8,
+          "depth_km": 53.0,
+          "lat": 18.535,
+          "lon": -66.896,
+          "place": "7 km NW of Camuy, Puerto Rico"
+        }
+      ]
     },
     {
-      "cell": "california_+32_-125",
-      "zone": "california",
+      "cell": "swarm_+56.0_-160.0",
+      "zone": "alaska",
+      "model_skill": "validated",
       "lat_range": [
-        32,
-        42
+        50.98756666666666,
+        60.98756666666666
       ],
       "lon_range": [
-        -125,
-        -115
+        -164.95026666666666,
+        -154.95026666666666
       ],
       "escalation_prob_72h": 0.018,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.3,
       "prob_6h_ago": 0.018,
-      "trend_6h": 0.0,
+      "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        55.99,
+        -159.95
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        55.98,
+        56.0,
+        -159.99,
+        -159.88
+      ],
+      "quakes": [
+        {
+          "id": "emsc:20260627_0000282",
+          "time": "2026-06-27T19:02:15.888000+00:00",
+          "mag": 2.6,
+          "depth_km": 7.6,
+          "lat": 55.982,
+          "lon": -159.983,
+          "place": "ALASKA PENINSULA"
+        },
+        {
+          "id": "aka2026mqjyzg",
+          "time": "2026-06-27T19:02:15.845000+00:00",
+          "mag": 2.6,
+          "depth_km": 0.1,
+          "lat": 56.003,
+          "lon": -159.993,
+          "place": "33 km WNW of Ivanof Bay, Alaska"
+        },
+        {
+          "id": "aka2026mqegmz",
+          "time": "2026-06-27T16:10:56.996000+00:00",
+          "mag": 2.5,
+          "depth_km": 11.4,
+          "lat": 55.978,
+          "lon": -159.875,
+          "place": "25 km WNW of Ivanof Bay, Alaska"
+        }
+      ]
     },
     {
-      "cell": "mediterranean_+34_+039",
+      "cell": "swarm_+38.9_+43.1",
       "zone": "mediterranean",
+      "model_skill": "experimental",
       "lat_range": [
-        34,
-        43
+        33.91036666666667,
+        43.91036666666667
       ],
       "lon_range": [
-        39,
-        45
+        38.06120000000001,
+        48.06120000000001
       ],
       "escalation_prob_72h": 0.018,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.3,
       "prob_6h_ago": 0.018,
-      "trend_6h": 0.0,
+      "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        38.91,
+        43.06
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        38.72,
+        39.27,
+        42.18,
+        43.51
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018365",
+          "time": "2026-06-28T19:23:25.600000+00:00",
+          "mag": 3.5,
+          "depth_km": 10.0,
+          "lat": 39.27,
+          "lon": 42.18,
+          "place": "EASTERN TURKEY"
+        },
+        {
+          "id": "emsc:20260627_0000241",
+          "time": "2026-06-27T15:16:36.200000+00:00",
+          "mag": 2.5,
+          "depth_km": 6.9,
+          "lat": 38.742,
+          "lon": 43.496,
+          "place": "EASTERN TURKEY"
+        },
+        {
+          "id": "emsc:20260627_0000224",
+          "time": "2026-06-27T14:57:52.380000+00:00",
+          "mag": 3.2,
+          "depth_km": 6.9,
+          "lat": 38.719,
+          "lon": 43.508,
+          "place": "EASTERN TURKEY"
+        }
+      ]
     },
     {
-      "cell": "mediterranean_+34_+029",
+      "cell": "swarm_+37.5_-25.0",
+      "zone": "37N_25W",
+      "model_skill": "experimental",
+      "lat_range": [
+        32.48233333333333,
+        42.48233333333333
+      ],
+      "lon_range": [
+        -30.04433333333333,
+        -20.04433333333333
+      ],
+      "escalation_prob_72h": 0.015,
+      "alert_level": "NORMAL",
+      "lift_vs_base": 0.2,
+      "prob_6h_ago": 0.015,
+      "trend_6h": -0.0,
+      "direction": "STEADY",
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        37.48,
+        -25.04
+      ],
+      "n_recent_quakes": 3,
+      "extent": [
+        37.04,
+        37.93,
+        -26.16,
+        -24.29
+      ],
+      "quakes": [
+        {
+          "id": "emsc_2018884",
+          "time": "2026-06-29T19:05:35+00:00",
+          "mag": 3.0,
+          "depth_km": 10.0,
+          "lat": 37.038,
+          "lon": -24.288,
+          "place": "AZORES ISLANDS REGION"
+        },
+        {
+          "id": "emsc_2018566",
+          "time": "2026-06-29T04:09:49.700000+00:00",
+          "mag": 2.7,
+          "depth_km": 5.0,
+          "lat": 37.479,
+          "lon": -24.683,
+          "place": "AZORES ISLANDS REGION"
+        },
+        {
+          "id": "emsc_2017817",
+          "time": "2026-06-27T11:58:54.400000+00:00",
+          "mag": 2.7,
+          "depth_km": 1.0,
+          "lat": 37.93,
+          "lon": -26.162,
+          "place": "AZORES ISLANDS, PORTUGAL"
+        }
+      ]
+    },
+    {
+      "cell": "swarm_+38.3_+36.9",
       "zone": "mediterranean",
+      "model_skill": "experimental",
       "lat_range": [
-        34,
-        43
+        33.272400000000005,
+        43.272400000000005
       ],
       "lon_range": [
-        29,
-        39
+        31.851999999999997,
+        41.852
       ],
-      "escalation_prob_72h": 0.016,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.3,
-      "prob_6h_ago": 0.016,
-      "trend_6h": 0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "alaska_+60_-170",
-      "zone": "alaska",
-      "lat_range": [
-        60,
-        70
-      ],
-      "lon_range": [
-        -170,
-        -160
-      ],
-      "escalation_prob_72h": 0.013,
+      "escalation_prob_72h": 0.015,
       "alert_level": "NORMAL",
       "lift_vs_base": 0.2,
-      "prob_6h_ago": 0.013,
+      "prob_6h_ago": 0.015,
       "trend_6h": -0.0,
       "direction": "STEADY",
-      "nearby_volcanic_alert": null
-    },
-    {
-      "cell": "alaska_+60_-150",
-      "zone": "alaska",
-      "lat_range": [
-        60,
-        70
+      "nearby_volcanic_alert": null,
+      "centroid": [
+        38.27,
+        36.85
       ],
-      "lon_range": [
-        -150,
-        -140
+      "n_recent_quakes": 8,
+      "extent": [
+        37.5,
+        38.78,
+        36.53,
+        37.19
       ],
-      "escalation_prob_72h": 0.013,
-      "alert_level": "NORMAL",
-      "lift_vs_base": 0.2,
-      "prob_6h_ago": 0.013,
-      "trend_6h": -0.0,
-      "direction": "STEADY",
-      "nearby_volcanic_alert": null
+      "quakes": [
+        {
+          "id": "emsc_2018995",
+          "time": "2026-06-29T23:44:49.070000+00:00",
+          "mag": 2.8,
+          "depth_km": 13.8,
+          "lat": 38.775,
+          "lon": 36.534,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc:20260629_0000257",
+          "time": "2026-06-29T16:46:33.840000+00:00",
+          "mag": 2.7,
+          "depth_km": 8.4,
+          "lat": 37.5,
+          "lon": 37.068,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc_2018828",
+          "time": "2026-06-29T16:46:33+00:00",
+          "mag": 2.7,
+          "depth_km": 8.4,
+          "lat": 37.5,
+          "lon": 37.068,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc_2018808",
+          "time": "2026-06-29T15:51:38.200000+00:00",
+          "mag": 2.9,
+          "depth_km": 5.0,
+          "lat": 38.747,
+          "lon": 37.185,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc:20260629_0000241",
+          "time": "2026-06-29T15:51:38+00:00",
+          "mag": 3.0,
+          "depth_km": 7.0,
+          "lat": 38.785,
+          "lon": 37.194,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc_2018685",
+          "time": "2026-06-29T11:02:29+00:00",
+          "mag": 3.1,
+          "depth_km": 7.0,
+          "lat": 38.054,
+          "lon": 36.61,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc:20260629_0000148",
+          "time": "2026-06-29T11:02:28.520000+00:00",
+          "mag": 3.0,
+          "depth_km": 7.0,
+          "lat": 38.054,
+          "lon": 36.61,
+          "place": "CENTRAL TURKEY"
+        },
+        {
+          "id": "emsc:20260628_0000231",
+          "time": "2026-06-28T16:34:16.450000+00:00",
+          "mag": 3.0,
+          "depth_km": 3.1,
+          "lat": 38.764,
+          "lon": 36.547,
+          "place": "CENTRAL TURKEY"
+        }
+      ]
     }
   ]
 }

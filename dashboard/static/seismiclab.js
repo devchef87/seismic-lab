@@ -3647,9 +3647,6 @@ async function loadWeatherRadar() {
             return;
         }
 
-        // last ~8 frames: snappier loop, fewer layers. 512px tiles + nearest resampling
-        // = crisp (not blurry). Inactive frames stay at 0.01 opacity (not 0) so MapLibre
-        // never evicts their tiles — kills the "disappears for a few seconds" reload gap.
         const recent = frames.slice(-8);
         const ACTIVE = 0.6, KEEP = 0.01;
         recent.forEach((frame, i) => {
@@ -3659,9 +3656,9 @@ async function loadWeatherRadar() {
                 id: `wx-radar-${i}`, type: 'raster', source: `wx-radar-${i}`,
                 paint: {
                     'raster-opacity': i === recent.length - 1 ? ACTIVE : KEEP,
-                    'raster-opacity-transition': { duration: 200 },  // smooth crossfade
-                    'raster-resampling': 'nearest',                  // crisp, not blurry
-                    'raster-fade-duration': 0,                       // no tile-load fade flicker
+                    'raster-opacity-transition': { duration: 200 },
+                    'raster-resampling': 'linear',
+                    'raster-fade-duration': 0,
                 },
                 layout: { visibility: 'visible' },
             }, 'plate-boundaries');
