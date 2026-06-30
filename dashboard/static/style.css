@@ -2415,6 +2415,11 @@ html, body {
     width: 10px;
     height: 10px;
 }
+.iono-swatch {
+    background: linear-gradient(135deg, rgba(40,120,200,0.7), rgba(180,200,50,0.7), rgba(210,50,30,0.7));
+    width: 10px;
+    height: 10px;
+}
 .volc-high-swatch {
     background: rgba(220,60,40,0.85);
     box-shadow: 0 0 4px rgba(220,60,40,0.4);

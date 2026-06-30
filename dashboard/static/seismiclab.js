@@ -3468,6 +3468,75 @@ async function init() {
     });
 }
 
+// ── Ionosphere TEC overlay ───────────────────────────────
+async function loadIonosphere() {
+    if (!mapReady) return;
+    try {
+        const resp = await fetch('/api/ionosphere/tec');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.features || !data.features.length) return;
+
+        const timeEl = document.getElementById('iono-time');
+        if (timeEl && data.features[0]?.properties?.time_tag) {
+            const t = new Date(data.features[0].properties.time_tag);
+            timeEl.textContent = t.toISOString().slice(11, 16) + ' UTC';
+        } else if (timeEl && data.time_tag) {
+            const t = new Date(data.time_tag);
+            timeEl.textContent = t.toISOString().slice(11, 16) + ' UTC';
+        }
+
+        for (const f of data.features) {
+            f.properties._weight = Math.min(1, (f.properties.tec || 0) / 50);
+        }
+
+        if (map.getSource('iono-tec')) {
+            map.getSource('iono-tec').setData(data);
+        } else {
+            map.addSource('iono-tec', { type: 'geojson', data });
+            map.addLayer({
+                id: 'iono-heatmap',
+                type: 'heatmap',
+                source: 'iono-tec',
+                maxzoom: 7,
+                paint: {
+                    'heatmap-weight': ['get', '_weight'],
+                    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'],
+                        0, 0.3,
+                        2, 0.35,
+                        4, 0.4,
+                        6, 0.45,
+                    ],
+                    'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
+                        0, 35,
+                        2, 35,
+                        4, 40,
+                        6, 50,
+                    ],
+                    'heatmap-opacity': ['interpolate', ['linear'], ['zoom'],
+                        0, 0.5,
+                        3, 0.5,
+                        6, 0.4,
+                    ],
+                    'heatmap-color': [
+                        'interpolate', ['linear'], ['heatmap-density'],
+                        0,    'rgba(0,0,0,0)',
+                        0.15, 'rgba(30,60,140,0.3)',
+                        0.35, 'rgba(40,120,200,0.45)',
+                        0.55, 'rgba(50,180,150,0.5)',
+                        0.75, 'rgba(180,200,50,0.6)',
+                        0.9,  'rgba(225,140,30,0.7)',
+                        1.0,  'rgba(205,50,30,0.75)',
+                    ],
+                },
+                layout: { visibility: 'visible' },
+            }, 'plate-boundaries');
+        }
+    } catch (e) {
+        console.error('Ionosphere load:', e);
+    }
+}
+
 // ── Map Legend ────────────────────────────────────────────
 (function initLegend() {
     const legendEl = document.getElementById('map-legend');
@@ -3498,6 +3567,7 @@ async function init() {
         'volc-high': false,
         'volc-elevated': false,
         'volc-active': false,
+        ionosphere: false,
     };
 
     function setMarkerVisibility(markers, visible) {
@@ -3539,6 +3609,12 @@ async function init() {
                 break;
             case 'tidal':
                 setMarkerVisibility(state.tidalMarkers, on);
+                break;
+            case 'ionosphere':
+                try {
+                    map.setLayoutProperty('iono-heatmap', 'visibility', on ? 'visible' : 'none');
+                } catch(e) {}
+                if (on && !map.getSource('iono-tec')) loadIonosphere();
                 break;
             case 'volc-high':
             case 'volc-elevated':

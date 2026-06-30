@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="/static/style.css?v=137">
+    <link rel="stylesheet" href="/static/style.css?v=142">
 </head>
 <body>
     <div class="hud">
@@ -96,6 +96,12 @@
                                 <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
                                 <div class="legend-swatch tidal-swatch"></div>
                                 <span class="legend-label">Tidal Stress</span>
+                            </div>
+                            <div class="legend-item" data-layer="ionosphere">
+                                <label class="legend-switch"><input type="checkbox"><span class="legend-slider"></span></label>
+                                <div class="legend-swatch iono-swatch"></div>
+                                <span class="legend-label">Ionosphere (TEC)</span>
+                                <span class="legend-count" id="iono-time"></span>
                             </div>
                         </div>
                         <div class="legend-divider"></div>
@@ -228,6 +234,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-    <script src="/static/seismiclab.js?v=137"></script>
+    <script src="/static/seismiclab.js?v=142"></script>
 </body>
 </html>
