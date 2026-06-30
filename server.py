@@ -295,6 +295,23 @@ async def api_weather_hurricanes():
     return await asyncio.to_thread(lambda: _wx_get("https://www.nhc.noaa.gov/CurrentStorms.json", 600))
 
 
+_NHC_TW = ("https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/"
+           "NHC_tropical_weather_summary/MapServer")
+
+
+@app.get("/api/weather/hurricane-cones")
+async def api_weather_hurricane_cones():
+    """NHC forecast cone-of-uncertainty + forecast track + forecast points as GeoJSON
+    for any active tropical cyclones (empty out of season). The classic cone overlay."""
+    return await asyncio.to_thread(_hurricane_cones)
+
+
+def _hurricane_cones():
+    def layer(n):
+        return _wx_get(f"{_NHC_TW}/{n}/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson", 600)
+    return {"cone": layer(7), "track": layer(6), "points": layer(5)}
+
+
 @app.get("/api/weather/outlook")
 async def api_weather_outlook():
     """SPC day-1 convective outlook — severe-weather risk polygons (US)."""
