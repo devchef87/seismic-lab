@@ -246,6 +246,68 @@ def _fetch_ionosphere_tec():
                 "error": "GloTEC data not available yet"}
 
 
+# ── Weather overlays (free NOAA/NWS + RainViewer; display-only, not model inputs) ──
+_WX_CACHE = {}
+
+
+def _wx_get(url, ttl, transform=None):
+    import urllib.request, json as _json, time as _t
+    now = _t.time(); c = _WX_CACHE.get(url)
+    if c and now - c[0] < ttl:
+        return c[1]
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "seismic-lab dashboard (ryan@axomlabs.ai)", "Accept": "application/geo+json"})
+        data = _json.loads(urllib.request.urlopen(req, timeout=30).read())
+        if transform:
+            data = transform(data)
+        _WX_CACHE[url] = (now, data)
+        return data
+    except Exception as e:
+        return c[1] if c else {"error": str(e)}
+
+
+@app.get("/api/weather/alerts")
+async def api_weather_alerts():
+    """Active severe-weather warnings/watches (NWS) as GeoJSON polygons — tornado,
+    severe thunderstorm, hurricane/tropical, flash flood, storm surge. US coverage."""
+    return await asyncio.to_thread(_weather_alerts)
+
+
+def _weather_alerts():
+    KEEP = ("Tornado", "Severe Thunderstorm", "Hurricane", "Tropical", "Flash Flood", "Storm Surge")
+    def tx(j):
+        feats = []
+        for f in j.get("features", []):
+            ev = (f.get("properties") or {}).get("event", "")
+            if f.get("geometry") and any(k in ev for k in KEEP):
+                p = f["properties"]
+                feats.append({"type": "Feature", "geometry": f["geometry"],
+                              "properties": {k: p.get(k) for k in
+                                  ("event", "severity", "certainty", "urgency", "headline", "areaDesc", "ends")}})
+        return {"type": "FeatureCollection", "generated": j.get("updated"), "features": feats}
+    return _wx_get("https://api.weather.gov/alerts/active?status=actual", 120, tx)
+
+
+@app.get("/api/weather/hurricanes")
+async def api_weather_hurricanes():
+    """Active tropical cyclones (NHC) — positions/intensity, Atlantic + E. Pacific."""
+    return await asyncio.to_thread(lambda: _wx_get("https://www.nhc.noaa.gov/CurrentStorms.json", 600))
+
+
+@app.get("/api/weather/outlook")
+async def api_weather_outlook():
+    """SPC day-1 convective outlook — severe-weather risk polygons (US)."""
+    return await asyncio.to_thread(lambda: _wx_get(
+        "https://www.spc.noaa.gov/products/outlook/day1otlk_cat.lyr.geojson", 1800))
+
+
+@app.get("/api/weather/radar")
+async def api_weather_radar():
+    """RainViewer global radar tile manifest — the FE builds tile URLs from host+frames."""
+    return await asyncio.to_thread(lambda: _wx_get("https://api.rainviewer.com/public/weather-maps.json", 300))
+
+
 @app.get("/api/volcanic/activity")
 async def api_volcanic_activity():
     return await asyncio.to_thread(_fetch_volcanic_activity)
