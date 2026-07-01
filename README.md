@@ -213,6 +213,8 @@ Copy `.env.example` to `.env` and configure:
 |---|---|---|
 | `NASA_API_KEY` | No | NASA API for CME/flare data. Falls back to DEMO_KEY |
 | `FIRMS_API_KEY` | No | NASA FIRMS for thermal anomaly data. Free registration |
+| `MAPTILER_API_KEY` | No | Satellite basemap tiles. Free tier at [maptiler.com](https://cloud.maptiler.com/account/keys/) |
+| `MAPBOX_ACCESS_TOKEN` | No | High-res satellite basemap tiles. Free tier at [mapbox.com](https://account.mapbox.com/access-tokens/) |
 
 The dashboard works without any API keys, most data sources (USGS, NOAA, SeedLink, Intermagnet, DART) are open and require no authentication.
 
