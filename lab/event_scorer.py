@@ -16,8 +16,11 @@ import numpy as np
 import lightgbm as lgb
 import sqlite3
 
+import json as _json
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(os.path.dirname(_HERE), "models", "event_escalation_lgb.txt")
+MAG_TABLE_PATH = os.path.join(os.path.dirname(_HERE), "models", "mag_exceedance_table.json")
 DB_PATH = os.path.join(os.path.dirname(_HERE), "data", "quakewatch.db")
 
 GK_CAP_KM = 300
@@ -268,6 +271,7 @@ def cluster_scores(events, radius_km=150):
             "lon": round(sum(m["lon"] for m in members) / len(members), 2),
             "escalation_prob": ev["escalation_prob"],  # peak probability
             "sequence_pattern": ev["sequence_pattern"],
+            "magnitude_probs": ev.get("magnitude_probs", {}),
             "sequence_context": ev["sequence_context"],
             "n_events_in_cluster": len(members),
             "latest_event_id": latest["event_id"],
@@ -278,6 +282,9 @@ def cluster_scores(events, radius_km=150):
     return clusters
 
 
+MAG_MODEL_THRESHOLDS = [5.0, 5.5, 6.0]
+
+
 class EventScorer:
     def __init__(self, model_path=None):
         mp = model_path or MODEL_PATH
@@ -285,6 +292,61 @@ class EventScorer:
             raise FileNotFoundError(f"Event model not found: {mp}")
         self.model = lgb.Booster(model_file=mp)
         self.last_scored_ts = ""
+
+        self.mag_models = {}
+        models_dir = os.path.dirname(mp)
+        for thresh in MAG_MODEL_THRESHOLDS:
+            tp = os.path.join(models_dir, f"mag_threshold_m{int(thresh*10)}.txt")
+            if os.path.exists(tp):
+                self.mag_models[thresh] = lgb.Booster(model_file=tp)
+        if self.mag_models:
+            print(f"  [event_scorer] loaded {len(self.mag_models)} magnitude threshold models")
+
+        self.mag_table = None
+        try:
+            with open(MAG_TABLE_PATH) as f:
+                self.mag_table = _json.load(f)
+        except Exception:
+            pass
+
+    def _magnitude_probs(self, escalation_prob, seq_max, feats):
+        """Per-threshold magnitude probabilities.
+        M5.0-M6.0: per-threshold models (sequence-aware, 0.68-0.88 AUC).
+        M6.5+: static exceedance table (insufficient data for reliable models).
+        Monotonicity enforced across the full chain."""
+        probs = {}
+        prev_p = 1.0
+
+        if self.mag_models:
+            feat_row = feats.reshape(1, -1)
+            for thresh in sorted(self.mag_models.keys()):
+                if thresh <= seq_max:
+                    continue
+                p = min(float(self.mag_models[thresh].predict(feat_row)[0]), prev_p)
+                p = round(p, 4)
+                if p >= 0.001:
+                    probs[str(thresh)] = p
+                prev_p = p
+
+        if self.mag_table:
+            matched = None
+            for b in self.mag_table["bins"]:
+                if b["lo"] <= seq_max < b["hi"]:
+                    matched = b
+                    break
+            if not matched and self.mag_table["bins"]:
+                matched = self.mag_table["bins"][-1]
+            if matched:
+                for thresh_str in sorted(matched["exceedance"].keys(), key=float):
+                    thresh = float(thresh_str)
+                    if thresh <= seq_max or thresh_str in probs:
+                        continue
+                    p = min(round(escalation_prob * matched["exceedance"][thresh_str], 4), prev_p)
+                    if p >= 0.001:
+                        probs[thresh_str] = p
+                    prev_p = p
+
+        return probs
 
     def score_event(self, conn, eid, ts, mag, depth, lat, lon):
         """Score a single earthquake. Returns dict with probability and context."""
@@ -299,6 +361,9 @@ class EventScorer:
         pattern = _classify_sequence(feats)
 
         fi = {name: i for i, name in enumerate(FEAT_NAMES)}
+        seq_max = max(float(mag), float(feats[fi["max_mag_7d"]]))
+        mag_probs = self._magnitude_probs(prob, seq_max, feats)
+
         return {
             "event_id": str(eid),
             "time": str(ts),
@@ -308,6 +373,7 @@ class EventScorer:
             "lon": round(float(lon), 3),
             "escalation_prob": round(prob, 3),
             "sequence_pattern": pattern,
+            "magnitude_probs": mag_probs,
             "sequence_context": {
                 "events_24h": int(feats[fi["n_events_24h"]]),
                 "events_7d": int(feats[fi["n_events_7d"]]),

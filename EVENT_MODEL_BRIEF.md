@@ -31,6 +31,13 @@ Returns the last 48h of scored earthquakes, **clustered by location** so each ac
       "lon": 120.57,
       "escalation_prob": 0.513,
       "sequence_pattern": "rumble",
+      "magnitude_probs": {
+        "5.0": 0.385,
+        "5.5": 0.221,
+        "6.0": 0.074,
+        "6.5": 0.031,
+        "7.0": 0.011
+      },
       "n_events_in_cluster": 42,
       "latest_event_id": "emsc:20260701_0000055",
       "sequence_context": {
@@ -55,7 +62,26 @@ Returns the last 48h of scored earthquakes, **clustered by location** so each ac
 |---|---|---|
 | `escalation_prob` | float 0-1 | Probability a larger event (trigger + M1.0) follows within 7 days at this location. **This is the primary signal.** |
 | `sequence_pattern` | string | Classified pattern type (see below) |
+| `magnitude_probs` | object | Per-threshold magnitude probabilities (see below) |
 | `sequence_context` | object | Raw sequence features the model used — for display |
+
+### Magnitude Probabilities (`magnitude_probs`)
+
+Breaks down the escalation probability by specific magnitude thresholds. Each key is a magnitude (e.g. `"6.0"`), each value is the probability of reaching **at least** that magnitude within 7 days.
+
+Computed as: `escalation_prob × P(follower ≥ Mx | escalation happened, for sequences at this magnitude level)`, using an empirical exceedance table built from 641K historical events.
+
+Only includes thresholds **above the current sequence max** (no point showing P(≥M5.0) when M5.2 already happened). Omits negligible probabilities (< 0.1%).
+
+**Suggested display** (in the event detail panel or on hover):
+```
+Escalation: 51%
+  ≥M5.0   38%
+  ≥M5.5   22%
+  ≥M6.0    7.4%
+  ≥M6.5    3.1%
+  ≥M7.0    1.1%
+```
 
 ### Sequence Pattern Types
 
@@ -142,4 +168,5 @@ The engine scores new events on each tick (~60s). Poll `/api/event-scores` at th
 - Does **not** predict when/where an earthquake will happen from nothing
 - Does **not** replace the swarm-level view — complements it
 - Does **not** use environmental data (solar, tidal, etc.) — purely catalog sequence features
-- Probability is for a **M+1.0 larger event** within **7 days** at the **same location** (Gardner-Knopoff magnitude-scaled radius, ~10-100km depending on trigger size)
+- `escalation_prob` is for a **M+1.0 larger event** within **7 days** at the **same location** (Gardner-Knopoff magnitude-scaled radius, ~10-100km depending on trigger size)
+- `magnitude_probs` breaks this down by specific thresholds (M5+, M6+, M7+, etc.) using historical exceedance rates — these are empirical, not model predictions
