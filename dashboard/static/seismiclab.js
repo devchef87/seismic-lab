@@ -1034,8 +1034,6 @@ const WORKBENCH_FEATURES = [
     // Ocean
     { id: 'water_level', source: 'noaa_tides', metric: 'water_level', label: 'Water Level', unit: 'm', category: 'Ocean', thresholds: [] },
     // Other
-    { id: 'olr', source: 'noaa_olr', metric: 'olr', label: 'OLR', unit: 'W/m2', category: 'Other', thresholds: [] },
-    { id: 'gravity', source: 'grace_gravity', metric: 'gravity_anomaly', label: 'Gravity Anomaly', unit: 'cm', category: 'Other', thresholds: [] },
     { id: 'pressure', source: 'nws_weather', metric: 'barometric_pressure', label: 'Barometric Pressure', unit: 'mb', category: 'Other', thresholds: [] },
 ];
 
@@ -1056,16 +1054,14 @@ const SIGNAL_FEATURE_MAP = {
     'x-ray':      ['xray'],
     'xray':       ['xray'],
     'neutron':    ['neutron'],
-    'olr':        ['olr'],
     'water':      ['water_level'],
     'pressure':   ['pressure'],
-    'gravity':    ['gravity'],
     'ief':        ['ief'],
 };
 
 const workbenchState = {
     active: new Set(),
-    timeHours: 6,
+    timeHours: 12,
     zoneName: '',
     zoneData: null,
     chartData: {},
@@ -1210,23 +1206,39 @@ async function fetchAndRenderChart(fid, card, signal) {
     if (!feat || !card) return;
 
     const now = new Date();
-    const hours = workbenchState.timeHours;
-    const start = new Date(now.getTime() - hours * 3600000);
-    const bucketMap = { 6: 1, 24: 5, 48: 15, 168: 60, 720: 240 };
-    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 500));
-    const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+    const requestedHours = workbenchState.timeHours;
+    const fallbackWindows = [requestedHours, 24, 48, 168, 720];
+    let samples = null;
+    let usedHours = requestedHours;
+
+    for (const hours of fallbackWindows) {
+        if (hours < requestedHours) continue;
+        const start = new Date(now.getTime() - hours * 3600000);
+        const bucketMap = { 12: 2, 24: 5, 48: 15, 168: 60, 720: 240 };
+        const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 500));
+        const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+
+        try {
+            const resp = await fetch(url, { signal });
+            if (!resp.ok) throw new Error('API error');
+            if (signal && signal.aborted) return;
+            const data = await resp.json();
+            if (data && data.length >= 2) {
+                samples = data;
+                usedHours = hours;
+                break;
+            }
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+        }
+    }
 
     try {
-        const resp = await fetch(url, { signal });
-        if (!resp.ok) throw new Error('API error');
-        if (signal && signal.aborted) return;
-        const samples = await resp.json();
-
         workbenchState.chartData[fid] = samples;
 
         if (!samples || samples.length === 0) {
             const loading = card.querySelector('.wb-chart-loading');
-            if (loading) loading.textContent = 'No data for this range';
+            if (loading) loading.textContent = 'No data available';
             return;
         }
 
@@ -1246,7 +1258,8 @@ async function fetchAndRenderChart(fid, card, signal) {
         labelRow.className = 'wb-chart-labels';
         const oldest = new Date(samples[0].timestamp);
         const newest = new Date(samples[samples.length - 1].timestamp);
-        labelRow.innerHTML = `<span class="wb-chart-xlabel">${formatChartTime(oldest)}</span><span class="wb-chart-xlabel">${formatChartTime(newest)}</span>`;
+        const spanMs = newest.getTime() - oldest.getTime();
+        labelRow.innerHTML = `<span class="wb-chart-xlabel">${formatChartTime(oldest, spanMs)}</span><span class="wb-chart-xlabel">${formatChartTime(newest, spanMs)}</span>`;
 
         const values = samples.map(s => s.value);
         const minV = arrMin(values);
@@ -1289,12 +1302,13 @@ function formatAxisVal(v) {
     return v.toExponential(1);
 }
 
-function formatChartTime(date) {
+function formatChartTime(date, spanMs) {
     const h = String(date.getUTCHours()).padStart(2, '0');
     const m = String(date.getUTCMinutes()).padStart(2, '0');
     const d = String(date.getUTCDate()).padStart(2, '0');
     const mo = String(date.getUTCMonth() + 1).padStart(2, '0');
-    if (workbenchState.timeHours <= 48) return `${h}:${m}`;
+    const useShort = spanMs != null ? spanMs <= 48 * 3600000 : workbenchState.timeHours <= 48;
+    if (useShort) return `${h}:${m}`;
     return `${mo}/${d} ${h}:${m}`;
 }
 
@@ -1420,22 +1434,34 @@ async function openExpandedChart(fid, hours) {
     await _renderExpandedChart(fid, _expandedHours);
 }
 
-async function _renderExpandedChart(fid, hours) {
+async function _renderExpandedChart(fid, requestedHours) {
     const feat = getFeatureById(fid);
     if (!feat) return;
 
     const now = new Date();
-    const start = new Date(now.getTime() - hours * 3600000);
-    const bucketMap = { 6: 1, 24: 3, 48: 10, 168: 30, 720: 120 };
-    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 800));
-    const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+    const fallbackWindows = [requestedHours, 24, 48, 168, 720];
+    let samples = null;
+
+    for (const hours of fallbackWindows) {
+        if (hours < requestedHours) continue;
+        const start = new Date(now.getTime() - hours * 3600000);
+        const bucketMap = { 12: 1, 24: 3, 48: 10, 168: 30, 720: 120 };
+        const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 800));
+        const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            if (data && data.length >= 2) { samples = data; break; }
+        } catch (e) { continue; }
+    }
+
+    if (!samples || samples.length < 2) return;
 
     try {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('API error');
-        const samples = await resp.json();
-        if (!samples || samples.length < 2) return;
 
+        samples.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         const values = samples.map(s => s.value);
         const latest = values[values.length - 1];
         const mn = arrMin(values), mx = arrMax(values);
@@ -1540,11 +1566,14 @@ async function _renderExpandedChart(fid, hours) {
                     x: {
                         type: 'time',
                         time: {
+                            unit: requestedHours <= 48 ? 'hour' : 'day',
                             tooltipFormat: 'PPpp',
                             displayFormats: {
                                 minute: 'HH:mm',
                                 hour: 'HH:mm',
                                 day: 'MMM d',
+                                week: 'MMM d',
+                                month: 'MMM yyyy',
                             },
                         },
                         ticks: {
@@ -1659,10 +1688,10 @@ async function openWorkbench(zoneName, zoneData) {
     const saved = loadWbPrefs();
     if (saved && saved.features && saved.features.length > 0) {
         workbenchState.active = new Set(saved.features);
-        workbenchState.timeHours = saved.timeHours || 6;
+        workbenchState.timeHours = saved.timeHours || 12;
     } else {
         workbenchState.active = getDefaultFeatures(zoneData);
-        workbenchState.timeHours = 6;
+        workbenchState.timeHours = 12;
     }
 
     buildWorkbenchSidebar();
