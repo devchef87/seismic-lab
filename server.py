@@ -3,12 +3,16 @@
 import asyncio
 import json as json_mod
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+
+load_dotenv()
 
 import threading
 from ingest import QuakeStore, IngestEngine, SOURCE_REGISTRY
@@ -49,6 +53,11 @@ async def index():
 @app.get("/api/stats")
 async def api_stats():
     return store.get_stats()
+
+
+@app.get("/api/config")
+async def api_config():
+    return {"maptiler_key": os.getenv("MAPTILER_API_KEY", "")}
 
 
 @app.get("/api/earthquakes")

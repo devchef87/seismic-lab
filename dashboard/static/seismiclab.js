@@ -4128,8 +4128,8 @@ state._hurricaneMarkers = {};
         }
     });
 
-    // Layer visibility state
-    const layerState = {
+    // Layer visibility state — restore from localStorage if available
+    const defaultLayerState = {
         earthquakes: true,
         heatmap: true,
         plates: true,
@@ -4146,6 +4146,10 @@ state._hurricaneMarkers = {};
         'wx-outlook': false,
         'wx-hurricanes': false,
     };
+    const savedLayers = (() => { try { return JSON.parse(localStorage.getItem('qw_layers')); } catch { return null; } })();
+    const layerState = savedLayers ? { ...defaultLayerState, ...savedLayers } : { ...defaultLayerState };
+
+    function _persistLayers() { localStorage.setItem('qw_layers', JSON.stringify(layerState)); }
 
     function setMarkerVisibility(markers, visible) {
         for (const key of Object.keys(markers)) {
@@ -4158,6 +4162,7 @@ state._hurricaneMarkers = {};
 
     function applyLayer(layer, on) {
         layerState[layer] = on;
+        _persistLayers();
 
         if (!mapReady) return;
 
@@ -4267,14 +4272,85 @@ state._hurricaneMarkers = {};
         }
     }
 
-    // Wire up toggle switches
+    // Wire up toggle switches + restore saved state
     panel.querySelectorAll('.legend-item').forEach(item => {
         const layer = item.dataset.layer;
         const cb = item.querySelector('input[type="checkbox"]');
         if (!layer || !cb) return;
 
+        if (layerState[layer] !== undefined) cb.checked = layerState[layer];
+
         cb.addEventListener('change', () => {
             applyLayer(layer, cb.checked);
+        });
+    });
+
+    // Apply saved layer states once map is ready
+    map.once('load', () => {
+        for (const [layer, on] of Object.entries(layerState)) {
+            if (on !== defaultLayerState[layer]) applyLayer(layer, on);
+        }
+    });
+
+    // Basemap toggle (Dark / Satellite)
+    let _maptilerKey = '';
+    const savedBasemap = localStorage.getItem('qw_basemap') || 'dark';
+
+    function _applySatellite() {
+        if (!_maptilerKey) return;
+        if (!map.getSource('satellite-tiles')) {
+            map.addSource('satellite-tiles', {
+                type: 'raster',
+                tiles: [`https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${_maptilerKey}`],
+                tileSize: 512,
+                maxzoom: 20,
+                attribution: '&copy; MapTiler &copy; Planet',
+            });
+        }
+        if (!map.getLayer('satellite-basemap')) {
+            const firstLayer = map.getStyle().layers.find(l => l.type !== 'background');
+            map.addLayer({
+                id: 'satellite-basemap',
+                type: 'raster',
+                source: 'satellite-tiles',
+                paint: { 'raster-opacity': 1 },
+            }, firstLayer ? firstLayer.id : undefined);
+        }
+        map.setLayoutProperty('satellite-basemap', 'visibility', 'visible');
+        const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
+        if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-opacity', 0);
+    }
+
+    fetch('/api/config').then(r => r.json()).then(c => {
+        _maptilerKey = c.maptiler_key || '';
+        if (savedBasemap === 'satellite' && _maptilerKey && mapReady) _applySatellite();
+        else if (savedBasemap === 'satellite' && _maptilerKey) map.once('load', _applySatellite);
+    }).catch(() => {});
+
+    // Restore basemap button state
+    if (savedBasemap !== 'dark') {
+        panel.querySelectorAll('.legend-basemap-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.basemap === savedBasemap);
+        });
+    }
+
+    panel.querySelectorAll('.legend-basemap-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.basemap;
+            panel.querySelectorAll('.legend-basemap-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            localStorage.setItem('qw_basemap', mode);
+
+            if (mode === 'satellite') {
+                if (!_maptilerKey) { console.warn('No MAPTILER_API_KEY set'); return; }
+                _applySatellite();
+            } else {
+                if (map.getLayer('satellite-basemap')) {
+                    map.setLayoutProperty('satellite-basemap', 'visibility', 'none');
+                }
+                const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
+                if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-opacity', 1);
+            }
         });
     });
 

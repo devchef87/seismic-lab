@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="/static/style.css?v=155">
+    <link rel="stylesheet" href="/static/style.css?v=157">
 </head>
 <body>
     <div class="hud">
@@ -61,6 +61,14 @@
                         <button class="legend-close" id="legend-close">&times;</button>
                     </div>
                     <div class="legend-body">
+                        <div class="legend-section">
+                            <div class="legend-section-head">Basemap</div>
+                            <div class="legend-basemap-row">
+                                <button class="legend-basemap-btn active" data-basemap="dark">Dark</button>
+                                <button class="legend-basemap-btn" data-basemap="satellite">Satellite</button>
+                            </div>
+                        </div>
+                        <div class="legend-divider"></div>
                         <div class="legend-section">
                             <div class="legend-item" data-layer="earthquakes">
                                 <label class="legend-switch"><input type="checkbox" checked><span class="legend-slider"></span></label>
@@ -265,6 +273,6 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-    <script src="/static/seismiclab.js?v=155"></script>
+    <script src="/static/seismiclab.js?v=157"></script>
 </body>
 </html>
