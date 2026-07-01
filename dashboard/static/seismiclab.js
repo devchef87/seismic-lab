@@ -2547,13 +2547,348 @@ function showEqDetail(eq) {
             <div><div class="detail-label">Coords</div><div class="detail-value">${eq.lat.toFixed(2)}, ${eq.lon.toFixed(2)}</div></div>
             <div><div class="detail-label">UTC</div><div class="detail-value">${new Date(eq.timestamp).toISOString().slice(11,16)}</div></div>
         </div>
-        <button class="detail-predict-btn" data-lat="${eq.lat}" data-lon="${eq.lon}" data-name="${place}">Analyze region</button>
+        <div class="detail-btn-row">
+            <button class="detail-predict-btn" data-lat="${eq.lat}" data-lon="${eq.lon}" data-name="${place}">Analyze region</button>
+            <button class="detail-share-btn" data-id="${eq.id}" data-lat="${eq.lat}" data-lon="${eq.lon}" data-mag="${eq.magnitude}" data-time="${eq.timestamp}" data-place="${place}" data-depth="${eq.depth_km || ''}">View Activity</button>
+        </div>
     `;
     el.classList.add('visible');
 }
 
 function hideEqDetail() {
     document.getElementById('eq-detail').classList.remove('visible');
+}
+
+// ── Shareable Event View ────────────────────────────────
+async function openShareView(eq) {
+    const panel = document.getElementById('share-panel');
+    const content = document.getElementById('share-content');
+    const color = magColor(eq.mag);
+
+    document.querySelector('.sidebar-left').classList.add('share-hidden');
+    document.querySelector('.sidebar-right').classList.add('share-hidden');
+    hideEqDetail();
+    closeSeismograph();
+
+    // Fixed header outside scroll
+    const header = panel.querySelector('.share-header');
+    if (header) header.remove();
+    const headerHtml = `<div class="share-header">
+        <div class="share-mag" style="color:${color}">M${parseFloat(eq.mag).toFixed(1)}</div>
+        <div class="share-place">${eq.place}</div>
+        <div class="share-meta">
+            <span>${new Date(eq.time).toUTCString()}</span>
+            <span>${parseFloat(eq.lat).toFixed(2)}°, ${parseFloat(eq.lon).toFixed(2)}°</span>
+            ${eq.depth ? `<span>${parseFloat(eq.depth).toFixed(0)} km depth</span>` : ''}
+        </div>
+    </div>`;
+    content.parentElement.insertAdjacentHTML('afterbegin', headerHtml);
+    content.innerHTML = '<div class="share-loading">Loading event context...</div>';
+    panel.classList.add('open');
+
+    // Offset center to left half of screen (panel covers right half)
+    const panelWidthFrac = 0.25;
+    const offsetLon = parseFloat(eq.lon) + panelWidthFrac * 360 / Math.pow(2, 5.5);
+    map.flyTo({ center: [offsetLon, parseFloat(eq.lat)], zoom: 5.5, speed: 1.2, pitch: 0 });
+
+    // Move layers button to left when sidebars hidden
+    const legend = document.getElementById('map-legend');
+    if (legend) legend.classList.add('share-legend-left');
+
+    try {
+        const resp = await fetch(`/api/event-context?lat=${eq.lat}&lon=${eq.lon}&time=${encodeURIComponent(eq.time)}&mag=${eq.mag}`);
+        if (!resp.ok) throw new Error('API error');
+        const ctx = await resp.json();
+        if (ctx.error) throw new Error(ctx.error);
+        renderSharePanel(eq, ctx, content, color);
+    } catch (e) {
+        const ld = content.querySelector('.share-loading');
+        if (ld) ld.textContent = 'Could not load event context';
+        else content.innerHTML = '<div class="share-loading">Could not load event context</div>';
+        console.error('Share view:', e);
+    }
+}
+
+function _sparklineSvg(values, w, h, lineColor, eventIdx) {
+    if (!values || values.length < 2) return '';
+    const vals = values.map(v => typeof v === 'object' ? v.value : v);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const range = mx - mn || 1;
+    const pad = 2;
+    const points = vals.map((v, i) => {
+        const x = pad + (i / (vals.length - 1)) * (w - pad * 2);
+        const y = pad + (1 - (v - mn) / range) * (h - pad * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    let marker = '';
+    if (eventIdx != null && eventIdx >= 0 && eventIdx < vals.length) {
+        const ex = pad + (eventIdx / (vals.length - 1)) * (w - pad * 2);
+        marker = `<line x1="${ex.toFixed(1)}" y1="0" x2="${ex.toFixed(1)}" y2="${h}" stroke="rgba(255,255,255,0.25)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="3,2"/>
+        <circle cx="${ex.toFixed(1)}" cy="${(pad + (1 - (vals[eventIdx] - mn) / range) * (h - pad * 2)).toFixed(1)}" r="3" fill="${lineColor}" stroke="rgba(255,255,255,0.6)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+    }
+    return `<svg class="share-spark" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        ${marker}
+    </svg>`;
+}
+
+function _seismicTimelineSvg(fore, after, eventTime, eventMag, w, h) {
+    const all = [
+        ...fore.map(q => ({ ...q, type: 'fore' })),
+        { magnitude: eventMag, timestamp: eventTime, type: 'main' },
+        ...after.map(q => ({ ...q, type: 'after' })),
+    ];
+    if (all.length < 2) return '';
+
+    const evtMs = new Date(eventTime).getTime();
+    const foreMs = 72 * 3600 * 1000;
+    const afterMs = 168 * 3600 * 1000;
+    const tMin = evtMs - foreMs, tMax = evtMs + afterMs;
+    const tRange = tMax - tMin;
+    const mags = all.map(q => q.magnitude);
+    const mMax = Math.ceil(Math.max(...mags, 3));
+    const pad = { l: 30, r: 6, t: 4, b: 20 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+
+    // horizontal grid lines at each magnitude
+    let gridLines = '';
+    for (let m = 2; m <= mMax; m++) {
+        const y = pad.t + ch - (m / mMax) * ch;
+        gridLines += `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${pad.l + cw}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+        gridLines += `<text x="${pad.l - 5}" y="${(y + 3).toFixed(1)}" fill="rgba(255,255,255,0.18)" font-size="9" text-anchor="end" font-family="JetBrains Mono,monospace">${m}×</text>`;
+    }
+
+    // baseline
+    const baseline = `<line x1="${pad.l}" y1="${(pad.t + ch).toFixed(1)}" x2="${pad.l + cw}" y2="${(pad.t + ch).toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+
+    // event time vertical marker
+    const evtX = pad.l + ((evtMs - tMin) / tRange) * cw;
+    const eventLine = `<line x1="${evtX.toFixed(1)}" y1="${pad.t}" x2="${evtX.toFixed(1)}" y2="${(pad.t + ch).toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="2,3"/>`;
+
+    // quake stems as thin lines from baseline
+    const stems = all.map(q => {
+        const t = new Date(q.timestamp).getTime();
+        const x = pad.l + ((t - tMin) / tRange) * cw;
+        const barH = (q.magnitude / mMax) * ch;
+        const y = pad.t + ch - barH;
+        const isMain = q.type === 'main';
+        const color = isMain ? magColor(q.magnitude) : 'rgba(255,255,255,0.35)';
+        const sw = isMain ? 2 : 1;
+        return `<line x1="${x.toFixed(1)}" y1="${(pad.t + ch).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${color}" stroke-width="${sw}" vector-effect="non-scaling-stroke"/>`;
+    }).join('');
+
+    // time axis labels
+    const timeLabels = [
+        { t: evtMs - foreMs, label: '-72h' },
+        { t: evtMs - 48 * 3600000, label: '-48h' },
+        { t: evtMs - 24 * 3600000, label: '-24h' },
+        { t: evtMs, label: 'event' },
+        { t: evtMs + 48 * 3600000, label: '+2d' },
+        { t: evtMs + 96 * 3600000, label: '+4d' },
+        { t: evtMs + afterMs, label: '+7d' },
+    ].map(({ t, label }) => {
+        const x = pad.l + ((t - tMin) / tRange) * cw;
+        const isEvt = label === 'event';
+        return `<text x="${x.toFixed(1)}" y="${(pad.t + ch + 14).toFixed(1)}" fill="${isEvt ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)'}" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">${label}</text>`;
+    }).join('');
+
+    return `<svg class="share-timeline-svg" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${gridLines}${baseline}${eventLine}${stems}${timeLabels}</svg>`;
+}
+
+function _depthChart(fore, after, w, h) {
+    const all = [...fore, ...after].filter(q => q.depth_km > 0);
+    if (all.length < 2) return '';
+    const depths = all.map(q => q.depth_km);
+    const bins = [0, 10, 30, 70, 150, 300, 700];
+    const counts = bins.map((b, i) => {
+        const top = bins[i + 1] || Infinity;
+        return depths.filter(d => d >= b && d < top).length;
+    });
+    const maxC = Math.max(...counts, 1);
+    const pad = { l: 36, r: 8, t: 6, b: 4 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    const barH = Math.max(2, ch / bins.length - 3);
+
+    const bars = bins.map((b, i) => {
+        const label = `${b}km`;
+        const y = pad.t + (i / bins.length) * ch;
+        const bw = (counts[i] / maxC) * cw;
+        return `<text x="${pad.l - 4}" y="${y + barH / 2 + 3}" fill="rgba(255,255,255,0.2)" font-size="8" text-anchor="end" font-family="JetBrains Mono,monospace">${label}</text>
+            <rect x="${pad.l}" y="${y}" width="${bw.toFixed(1)}" height="${barH}" rx="1" fill="rgba(255,255,255,0.15)"/>
+            ${counts[i] ? `<text x="${pad.l + bw + 4}" y="${y + barH / 2 + 3}" fill="rgba(255,255,255,0.2)" font-size="8" font-family="JetBrains Mono,monospace">${counts[i]}</text>` : ''}`;
+    }).join('');
+    return `<svg class="share-depth-svg" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">${bars}</svg>`;
+}
+
+function renderSharePanel(eq, ctx, container, color) {
+    const loading = container.querySelector('.share-loading');
+    if (loading) loading.remove();
+
+    const c = ctx.conditions || {};
+
+    function condRow(label, unit, data, flagFn) {
+        if (!data) return '';
+        const v = data.at_event;
+        const flag = flagFn ? flagFn(v) : '';
+        const flagLabel = flag === 'high' ? 'HIGH' : flag === 'elevated' ? 'ELEVATED' : '';
+        const lineColor = flag === 'high' ? 'rgba(220,70,50,0.6)' : flag === 'elevated' ? 'rgba(230,160,50,0.55)' : 'rgba(255,255,255,0.25)';
+        const spark = _sparklineSvg(data.values, 480, 38, lineColor, data.event_idx);
+        const fmt = Number.isInteger(v) || Math.abs(v) >= 100 ? Math.round(v) : v.toFixed(1);
+        return `<div class="share-cond-row">
+            <div class="share-cond-head">
+                <span class="share-cond-label">${label}</span>
+                <span class="share-cond-value ${flag}">${fmt}</span>
+                <span class="share-cond-unit">${unit}</span>
+                ${flagLabel ? `<span class="share-cond-flag ${flag}">${flagLabel}</span>` : ''}
+            </div>
+            ${spark}
+        </div>`;
+    }
+
+    const condHtml = [
+        condRow('Solar Wind', 'km/s', c.solar_wind, v => v > 600 ? 'high' : v > 450 ? 'elevated' : ''),
+        condRow('Kp Index', '', c.kp, v => v >= 6 ? 'high' : v >= 4 ? 'elevated' : ''),
+        condRow('Dst Index', 'nT', c.dst, v => v < -50 ? 'high' : v < -30 ? 'elevated' : ''),
+        condRow('IMF Bz', 'nT', c.imf_bz, v => v < -10 ? 'high' : v < -5 ? 'elevated' : ''),
+        condRow('SW Density', 'p/cm³', c.sw_density, v => v > 15 ? 'elevated' : ''),
+    ].filter(Boolean).join('');
+
+    const fore = ctx.foreshocks || [];
+    const after = ctx.aftershocks || [];
+
+    const depthSvg = _depthChart(fore, after, 480, 100);
+
+    // Find nearest station for embedded seismograph
+    let nearestStation = null, nearestDist = Infinity;
+    const eqLat = parseFloat(eq.lat), eqLon = parseFloat(eq.lon);
+    for (const [key, marker] of Object.entries(state.stationMarkers)) {
+        const ll = marker.getLngLat();
+        const d = Math.sqrt(Math.pow(ll.lat - eqLat, 2) + Math.pow(ll.lng - eqLon, 2));
+        if (d < nearestDist) { nearestDist = d; nearestStation = key; }
+    }
+
+    function quakeRow(q) {
+        const c = magColor(q.magnitude);
+        const t = timeAgo(q.timestamp);
+        return `<div class="share-quake-row">
+            <span class="share-q-mag" style="color:${c}">M${q.magnitude.toFixed(1)}</span>
+            <span class="share-q-place">${(q.place || '').slice(0, 40)}</span>
+            <span class="share-q-time">${t}</span>
+        </div>`;
+    }
+
+    const foreHtml = fore.length
+        ? fore.slice(-10).map(quakeRow).join('')
+        : '<div class="share-none">No foreshocks detected in 72h window</div>';
+
+    const afterHtml = after.length
+        ? after.slice(0, 10).map(quakeRow).join('')
+        : '<div class="share-none">No aftershocks recorded yet</div>';
+
+    const zoneHtml = ctx.zone
+        ? `<div class="share-zone">
+            <span class="share-zone-name">${(ctx.zone.zone || '').replace(/_/g, ' ')}</span>
+            <span class="share-zone-level share-zone-${(ctx.zone.alert_level || '').toLowerCase()}">${ctx.zone.alert_level}</span>
+            ${ctx.zone.escalation_prob ? `<span class="share-zone-prob">${(ctx.zone.escalation_prob * 100).toFixed(1)}% escalation probability (72h)</span>` : ''}
+        </div>`
+        : '';
+
+    const dartHtml = (ctx.dart || []).length
+        ? ctx.dart.map(d => `<div class="share-dart-row">
+            <span class="share-dart-id">${d.station_id}</span>
+            <span class="share-dart-region">${d.region || ''}</span>
+            ${d.latest ? `<span class="share-dart-mode">${d.latest.mode >= 2 ? 'EVENT' : 'NORMAL'}</span>` : ''}
+        </div>`).join('')
+        : '';
+
+    const sections = [];
+
+    if (nearestStation) {
+        sections.push(`
+            <div class="share-section">
+                <div class="share-section-title">Nearest Station</div>
+                <div class="embedded-seismo-wrap" id="share-seismo"></div>
+            </div>
+        `);
+    }
+
+    if (zoneHtml) {
+        sections.push(`
+            <div class="share-section">
+                <div class="share-section-title">Active Zone</div>
+                ${zoneHtml}
+            </div>
+        `);
+    }
+
+    sections.push(`
+        <div class="share-section">
+            <div class="share-section-title">Foreshocks <span class="share-count">${fore.length} events · 72h</span></div>
+            <div class="share-quake-list">${foreHtml}</div>
+        </div>
+    `);
+
+    sections.push(`
+        <div class="share-section">
+            <div class="share-section-title">Aftershocks <span class="share-count">${after.length} events · 7d</span></div>
+            <div class="share-quake-list">${afterHtml}</div>
+        </div>
+    `);
+
+    if (condHtml) {
+        sections.push(`
+            <div class="share-section">
+                <div class="share-section-title">Conditions at Event</div>
+                ${condHtml}
+            </div>
+        `);
+    }
+
+    if (depthSvg && (fore.length + after.length) >= 3) {
+        sections.push(`
+            <div class="share-section">
+                <div class="share-section-title">Depth Distribution</div>
+                ${depthSvg}
+            </div>
+        `);
+    }
+
+    if (dartHtml) {
+        sections.push(`
+            <div class="share-section">
+                <div class="share-section-title">Nearby DART Buoys</div>
+                <div class="share-dart-list">${dartHtml}</div>
+            </div>
+        `);
+    }
+
+    sections.push(`
+        <div class="share-footer">
+            <div class="share-brand">SeismicLab</div>
+            <div class="share-disclaimer">Observational data · Not a forecast</div>
+        </div>
+    `);
+
+    container.insertAdjacentHTML('beforeend', sections.join(''));
+
+    // Start embedded seismograph after DOM insertion
+    if (nearestStation) {
+        const stn = state.stationMarkers[nearestStation];
+        const name = stn?.getElement()?.querySelector('[title]')?.getAttribute('title')?.split(' (')[0] || '';
+        requestAnimationFrame(() => startEmbeddedSeismo('share-seismo', nearestStation, name, '24h'));
+    }
+}
+
+function closeShareView() {
+    const panel = document.getElementById('share-panel');
+    panel.classList.remove('open');
+    const header = panel.querySelector('.share-header');
+    if (header) header.remove();
+    document.querySelector('.sidebar-left').classList.remove('share-hidden');
+    document.querySelector('.sidebar-right').classList.remove('share-hidden');
+    const legend = document.getElementById('map-legend');
+    if (legend) legend.classList.remove('share-legend-left');
+    stopEmbeddedSeismo('share-seismo');
 }
 
 // ── Signal cards (now feeds conditions panel) ───────────
@@ -3308,11 +3643,22 @@ function setupMapClick() {
 // ── Event delegation ─────────────────────────────────────
 function setupDelegation() {
     document.getElementById('detail-close').addEventListener('click', hideEqDetail);
+    document.getElementById('share-close').addEventListener('click', closeShareView);
     document.getElementById('eq-detail').addEventListener('click', (e) => {
         const btn = e.target.closest('.detail-predict-btn');
         if (btn) {
             hideEqDetail();
             predictLocation(parseFloat(btn.dataset.lat), parseFloat(btn.dataset.lon), btn.dataset.name || '');
+            return;
+        }
+        const shareBtn = e.target.closest('.detail-share-btn');
+        if (shareBtn) {
+            openShareView({
+                id: shareBtn.dataset.id, lat: shareBtn.dataset.lat,
+                lon: shareBtn.dataset.lon, mag: shareBtn.dataset.mag,
+                time: shareBtn.dataset.time, place: shareBtn.dataset.place,
+                depth: shareBtn.dataset.depth,
+            });
             return;
         }
     });

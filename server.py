@@ -59,6 +59,144 @@ async def api_earthquakes(
     return store.query_earthquakes(start=start, end=end, min_mag=min_mag, limit=limit)
 
 
+@app.get("/api/event-context")
+async def api_event_context(
+    lat: float = Query(...), lon: float = Query(...),
+    time: str = Query(...), mag: float = Query(None),
+):
+    """Shareable event context: foreshocks, aftershocks, conditions snapshot, DART."""
+    return await asyncio.to_thread(lambda: _build_event_context(lat, lon, time, mag))
+
+
+def _build_event_context(lat, lon, time_str, mag):
+    import sqlite3
+    from datetime import datetime, timedelta
+    try:
+        evt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+    except Exception:
+        return {"error": "invalid time format"}
+    evt_naive = evt.replace(tzinfo=None)
+
+    radius = 3.0
+    fore_hours, after_hours = 72, 168
+    fore_start = (evt_naive - timedelta(hours=fore_hours)).isoformat()
+    after_end = (evt_naive + timedelta(hours=after_hours)).isoformat()
+
+    conn = sqlite3.connect(str(store.db_path), timeout=30)
+    conn.row_factory = sqlite3.Row
+
+    # Foreshocks + aftershocks in spatial window
+    nearby = conn.execute("""
+        SELECT id, timestamp, magnitude, depth_km, lat, lon, place
+        FROM earthquakes
+        WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+          AND timestamp BETWEEN ? AND ?
+        ORDER BY timestamp ASC
+    """, (lat - radius, lat + radius, lon - radius, lon + radius,
+          fore_start, after_end)).fetchall()
+
+    evt_ts = evt_naive.isoformat()
+    foreshocks = [dict(r) for r in nearby if r['timestamp'] < evt_ts]
+    aftershocks = [dict(r) for r in nearby if r['timestamp'] > evt_ts]
+
+    # Conditions: Kp, Dst, solar wind, IMF Bz around event (±24h window)
+    cond_start = (evt_naive - timedelta(hours=24)).isoformat()
+    cond_end = (evt_naive + timedelta(hours=24)).isoformat()
+    MAX_SPARK = 200
+    conditions = {}
+    for metric, label in [('kp_index', 'kp'), ('dst_index', 'dst'),
+                          ('solar_wind_speed', 'solar_wind'),
+                          ('solar_wind_density', 'sw_density'),
+                          ('imf_bz', 'imf_bz')]:
+        rows = conn.execute("""
+            SELECT timestamp, value FROM samples
+            WHERE metric = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+        """, (metric, cond_start, cond_end)).fetchall()
+        vals = [dict(r) for r in rows]
+        if vals:
+            values = [v['value'] for v in vals]
+            at_idx = min(range(len(vals)),
+                key=lambda i: abs(datetime.fromisoformat(
+                    vals[i]['timestamp']).timestamp() - evt_naive.timestamp()))
+            at_event_val = vals[at_idx]['value']
+            if len(vals) > MAX_SPARK:
+                step = len(vals) / MAX_SPARK
+                sampled = [vals[int(i * step)] for i in range(MAX_SPARK)]
+                ds_event_idx = round(at_idx / step)
+                ds_event_idx = min(ds_event_idx, len(sampled) - 1)
+            else:
+                sampled = vals
+                ds_event_idx = at_idx
+            conditions[label] = {
+                'values': sampled,
+                'event_idx': ds_event_idx,
+                'min': round(min(values), 2),
+                'max': round(max(values), 2),
+                'mean': round(sum(values) / len(values), 2),
+                'at_event': at_event_val,
+            }
+
+    # GOES X-ray (solar flare indicator)
+    xray = conn.execute("""
+        SELECT timestamp, value FROM samples
+        WHERE metric LIKE 'goes_xray_flux%' AND timestamp BETWEEN ? AND ?
+        ORDER BY timestamp DESC LIMIT 1
+    """, (cond_start, cond_end)).fetchone()
+    if xray:
+        conditions['xray_flux'] = {'at_event': xray['value'], 'timestamp': xray['timestamp']}
+
+    # Nearest DART buoys (within 15° of event)
+    dart_info = []
+    try:
+        dart_stations = conn.execute("""
+            SELECT station_id, lat, lon, region FROM dart_stations
+            WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+        """, (lat - 15, lat + 15, lon - 15, lon + 15)).fetchall()
+        for ds in dart_stations[:5]:
+            reading = conn.execute("""
+                SELECT height_m, mode, timestamp FROM dart_readings
+                WHERE station_id = ? AND timestamp <= ?
+                ORDER BY timestamp DESC LIMIT 1
+            """, (ds['station_id'], after_end)).fetchone()
+            dart_info.append({
+                'station_id': ds['station_id'], 'lat': ds['lat'], 'lon': ds['lon'],
+                'region': ds['region'],
+                'latest': dict(reading) if reading else None,
+            })
+    except Exception:
+        pass
+
+    # Active zone context
+    zone_context = None
+    try:
+        import json as _json
+        with open(str(store.db_path).replace('quakewatch.db', 'tier2_watch.json')) as f:
+            t2 = _json.load(f)
+        for w in t2.get('watch', []):
+            c = w.get('centroid', [0, 0])
+            if abs(c[0] - lat) < 5 and abs(c[1] - lon) < 5:
+                zone_context = {
+                    'zone': w.get('zone'), 'alert_level': w.get('alert_level'),
+                    'escalation_prob': w.get('escalation_prob_72h'),
+                    'n_quakes': w.get('n_recent_quakes'),
+                    'model_skill': w.get('model_skill'),
+                }
+                break
+    except Exception:
+        pass
+
+    conn.close()
+    return {
+        'event': {'lat': lat, 'lon': lon, 'time': time_str, 'mag': mag},
+        'foreshocks': foreshocks[-50:],
+        'aftershocks': aftershocks[:50],
+        'conditions': conditions,
+        'dart': dart_info,
+        'zone': zone_context,
+    }
+
+
 @app.get("/api/samples")
 async def api_samples(
     source: str = Query(None), metric: str = Query(None),
