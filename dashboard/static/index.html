@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="/static/style.css?v=157">
+    <link rel="stylesheet" href="/static/style.css?v=166">
 </head>
 <body>
     <div class="hud">
@@ -65,7 +65,8 @@
                             <div class="legend-section-head">Basemap</div>
                             <div class="legend-basemap-row">
                                 <button class="legend-basemap-btn active" data-basemap="dark">Dark</button>
-                                <button class="legend-basemap-btn" data-basemap="satellite">Satellite</button>
+                                <button class="legend-basemap-btn" data-basemap="mapbox">Mapbox</button>
+                                <button class="legend-basemap-btn" data-basemap="maptiler">MapTiler</button>
                             </div>
                         </div>
                         <div class="legend-divider"></div>
@@ -267,12 +268,38 @@
         <div class="share-scroll" id="share-content"></div>
     </div>
 
+    <div class="chart-expand-overlay" id="chart-expand-overlay">
+        <div class="chart-expand-card">
+            <div class="chart-expand-header">
+                <div class="chart-expand-title-row">
+                    <span class="chart-expand-title" id="chart-expand-title"></span>
+                    <span class="chart-expand-unit" id="chart-expand-unit"></span>
+                    <span class="chart-expand-val" id="chart-expand-val"></span>
+                </div>
+                <div class="chart-expand-tf" id="chart-expand-tf">
+                    <button class="chart-expand-tf-btn" data-hours="6">6h</button>
+                    <button class="chart-expand-tf-btn" data-hours="24">24h</button>
+                    <button class="chart-expand-tf-btn" data-hours="48">48h</button>
+                    <button class="chart-expand-tf-btn" data-hours="168">7d</button>
+                    <button class="chart-expand-tf-btn" data-hours="720">30d</button>
+                </div>
+                <div class="chart-expand-close" id="chart-expand-close">&#10005;</div>
+            </div>
+            <div class="chart-expand-body">
+                <canvas id="chart-expand-canvas"></canvas>
+            </div>
+            <div class="chart-expand-stats" id="chart-expand-stats"></div>
+        </div>
+    </div>
+
     <div class="fc-overlay" id="fc-overlay">
         <div class="fc-close" id="fc-close">&#10005;</div>
         <div class="fc-content" id="fc-content"></div>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-    <script src="/static/seismiclab.js?v=157"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="/static/seismiclab.js?v=166"></script>
 </body>
 </html>

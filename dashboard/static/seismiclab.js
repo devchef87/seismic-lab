@@ -1,5 +1,8 @@
 'use strict';
 
+function arrMin(arr) { let m = arr[0]; for (let i = 1; i < arr.length; i++) if (arr[i] < m) m = arr[i]; return m; }
+function arrMax(arr) { let m = arr[0]; for (let i = 1; i < arr.length; i++) if (arr[i] > m) m = arr[i]; return m; }
+
 const CONFIG = {
     STREAM_URL: '/api/stream',
     FAULT_RISK_INTERVAL: 60000,
@@ -890,8 +893,8 @@ function drawAreaChart(canvas, data, color, opts = {}) {
     ctx.clearRect(0, 0, w, h);
 
     const values = data.map(d => typeof d === 'number' ? d : d.v);
-    const min = opts.min != null ? opts.min : Math.min(...values);
-    const max = opts.max != null ? opts.max : Math.max(...values);
+    const min = opts.min != null ? opts.min : arrMin(values);
+    const max = opts.max != null ? opts.max : arrMax(values);
     const range = max - min || 1;
     const pad = 4;
 
@@ -1160,26 +1163,33 @@ async function addWorkbenchChart(fid) {
     card.className = 'wb-chart-card';
     card.id = 'wb-card-' + fid;
 
-    // Build annotation badges
-    let annoBadges = '';
+    // Build annotation dots
+    let annoDots = '';
     const annos = workbenchState.annotations[fid];
     if (annos && annos.length > 0) {
-        annoBadges = '<div class="wb-annotation">' +
+        annoDots = '<div class="wb-anno-dots">' +
             annos.map(a => {
-                const cls = a.severity > 0.6 ? '' : a.severity > 0.3 ? ' elevated' : ' watch';
-                return `<span class="wb-anno-badge${cls}">${a.label}</span>`;
+                const color = a.severity > 0.6 ? '#d64632' : a.severity > 0.3 ? '#c8a030' : '#6498c8';
+                return `<span class="wb-anno-dot" style="background:${color}" title="${a.label}"></span>`;
             }).join('') + '</div>';
     }
 
     card.innerHTML = `
         <div class="wb-chart-header">
             <span class="wb-chart-title">${feat.label}<span class="wb-chart-unit">${feat.unit}</span><span class="wb-chart-val" id="wb-val-${fid}"></span></span>
+            ${annoDots}
+            <div class="wb-chart-expand" data-fid="${fid}" title="Expand chart">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1 1h5M1 1v5M15 15h-5M15 15v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
             <div class="wb-chart-remove" data-fid="${fid}">&#10005;</div>
         </div>
-        ${annoBadges}
         <div class="wb-chart-loading">Loading...</div>
     `;
     grid.appendChild(card);
+
+    card.querySelector('.wb-chart-expand').addEventListener('click', () => {
+        openExpandedChart(fid);
+    });
 
     card.querySelector('.wb-chart-remove').addEventListener('click', () => {
         workbenchState.active.delete(fid);
@@ -1193,20 +1203,23 @@ async function addWorkbenchChart(fid) {
     await fetchAndRenderChart(fid, card);
 }
 
-async function fetchAndRenderChart(fid, card) {
+let _wbAbort = null;
+
+async function fetchAndRenderChart(fid, card, signal) {
     const feat = getFeatureById(fid);
     if (!feat || !card) return;
 
     const now = new Date();
     const hours = workbenchState.timeHours;
     const start = new Date(now.getTime() - hours * 3600000);
-    const bucketMap = { 6: 1, 24: 3, 48: 5, 168: 15, 720: 60 };
-    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 700));
+    const bucketMap = { 6: 1, 24: 5, 48: 15, 168: 60, 720: 240 };
+    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 500));
     const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
 
     try {
-        const resp = await fetch(url);
+        const resp = await fetch(url, { signal });
         if (!resp.ok) throw new Error('API error');
+        if (signal && signal.aborted) return;
         const samples = await resp.json();
 
         workbenchState.chartData[fid] = samples;
@@ -1221,52 +1234,44 @@ async function fetchAndRenderChart(fid, card) {
         const valEl = card.querySelector('.wb-chart-val');
         if (valEl) valEl.textContent = formatAxisVal(latestVal);
 
-        // Replace loading with canvas + labels
         const loading = card.querySelector('.wb-chart-loading');
         if (loading) loading.remove();
 
+        // Build new elements offscreen
         const canvas = document.createElement('canvas');
         canvas.className = 'wb-chart-canvas';
         canvas.id = 'wb-canvas-' + fid;
 
         const labelRow = document.createElement('div');
         labelRow.className = 'wb-chart-labels';
-
-        // Time labels
         const oldest = new Date(samples[0].timestamp);
         const newest = new Date(samples[samples.length - 1].timestamp);
         labelRow.innerHTML = `<span class="wb-chart-xlabel">${formatChartTime(oldest)}</span><span class="wb-chart-xlabel">${formatChartTime(newest)}</span>`;
 
-        // Remove any existing canvas/labels (for re-render)
-        const oldCanvas = card.querySelector('.wb-chart-canvas');
-        const oldLabels = card.querySelector('.wb-chart-labels');
-        const oldYmin = card.querySelector('.wb-chart-ylabel.bottom');
-        const oldYmax = card.querySelector('.wb-chart-ylabel.top');
-        if (oldCanvas) oldCanvas.remove();
-        if (oldLabels) oldLabels.remove();
-        if (oldYmin) oldYmin.remove();
-        if (oldYmax) oldYmax.remove();
-
-        card.appendChild(canvas);
-        card.appendChild(labelRow);
-
-        // Y-axis labels
         const values = samples.map(s => s.value);
-        const minV = Math.min(...values);
-        const maxV = Math.max(...values);
+        const minV = arrMin(values);
+        const maxV = arrMax(values);
         const yMaxEl = document.createElement('span');
         yMaxEl.className = 'wb-chart-ylabel top';
         yMaxEl.textContent = formatAxisVal(maxV);
         const yMinEl = document.createElement('span');
         yMinEl.className = 'wb-chart-ylabel bottom';
         yMinEl.textContent = formatAxisVal(minV);
-        card.appendChild(yMaxEl);
-        card.appendChild(yMinEl);
 
+        // Swap old for new in a single frame
+        if (signal && signal.aborted) return;
         requestAnimationFrame(() => {
+            if (signal && signal.aborted) return;
+            const old = card.querySelectorAll('.wb-chart-canvas, .wb-chart-labels, .wb-chart-ylabel');
+            old.forEach(el => el.remove());
+            card.appendChild(canvas);
+            card.appendChild(labelRow);
+            card.appendChild(yMaxEl);
+            card.appendChild(yMinEl);
             drawWorkbenchChart(canvas, samples, feat);
         });
     } catch (e) {
+        if (e.name === 'AbortError') return;
         const loading = card.querySelector('.wb-chart-loading');
         if (loading) {
             loading.textContent = 'Failed to load';
@@ -1306,8 +1311,8 @@ function drawWorkbenchChart(canvas, samples, feat) {
     ctx.clearRect(0, 0, w, h);
 
     const values = samples.map(s => s.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = arrMin(values);
+    const max = arrMax(values);
     const range = max - min || 1;
     const padX = 4, padY = 6;
 
@@ -1377,29 +1382,225 @@ function removeWorkbenchChart(fid) {
 }
 
 async function refreshAllWorkbenchCharts() {
-    for (const fid of workbenchState.active) {
+    if (_wbAbort) _wbAbort.abort();
+    _wbAbort = new AbortController();
+    const signal = _wbAbort.signal;
+    const fids = [...workbenchState.active];
+    await Promise.all(fids.map(fid => {
         const card = document.getElementById('wb-card-' + fid);
-        if (card) {
-            // Show loading on existing chart
-            const canvas = card.querySelector('.wb-chart-canvas');
-            const labels = card.querySelector('.wb-chart-labels');
-            const yMin = card.querySelector('.wb-chart-ylabel.bottom');
-            const yMax = card.querySelector('.wb-chart-ylabel.top');
-            if (canvas) canvas.remove();
-            if (labels) labels.remove();
-            if (yMin) yMin.remove();
-            if (yMax) yMax.remove();
-            const existing = card.querySelector('.wb-chart-loading');
-            if (!existing) {
-                const loading = document.createElement('div');
-                loading.className = 'wb-chart-loading';
-                loading.textContent = 'Loading...';
-                card.appendChild(loading);
-            }
-            fetchAndRenderChart(fid, card);
+        return card ? fetchAndRenderChart(fid, card, signal) : Promise.resolve();
+    }));
+}
+
+// ── Expanded Chart (Chart.js interactive) ────────────────
+let _expandedChart = null;
+let _expandedFid = null;
+let _expandedHours = null;
+
+async function openExpandedChart(fid, hours) {
+    const feat = getFeatureById(fid);
+    if (!feat) return;
+
+    _expandedFid = fid;
+    _expandedHours = hours || workbenchState.timeHours;
+
+    const overlay = document.getElementById('chart-expand-overlay');
+    overlay.classList.add('open');
+
+    document.getElementById('chart-expand-title').textContent = feat.label;
+    document.getElementById('chart-expand-unit').textContent = feat.unit;
+    document.getElementById('chart-expand-val').textContent = '';
+    document.getElementById('chart-expand-stats').innerHTML = '';
+
+    // Highlight active TF button
+    document.querySelectorAll('.chart-expand-tf-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.hours) === _expandedHours);
+    });
+
+    await _renderExpandedChart(fid, _expandedHours);
+}
+
+async function _renderExpandedChart(fid, hours) {
+    const feat = getFeatureById(fid);
+    if (!feat) return;
+
+    const now = new Date();
+    const start = new Date(now.getTime() - hours * 3600000);
+    const bucketMap = { 6: 1, 24: 3, 48: 10, 168: 30, 720: 120 };
+    const bucket = bucketMap[hours] || Math.max(1, Math.round(hours * 60 / 800));
+    const url = `/api/samples?source=${encodeURIComponent(feat.source)}&metric=${encodeURIComponent(feat.metric)}&start=${start.toISOString()}&bucket=${bucket}`;
+
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('API error');
+        const samples = await resp.json();
+        if (!samples || samples.length < 2) return;
+
+        const values = samples.map(s => s.value);
+        const latest = values[values.length - 1];
+        const mn = arrMin(values), mx = arrMax(values);
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+        document.getElementById('chart-expand-val').textContent = formatAxisVal(latest);
+        document.getElementById('chart-expand-stats').innerHTML = `
+            <div class="chart-expand-stat"><span class="chart-expand-stat-label">Min</span><span class="chart-expand-stat-val">${formatAxisVal(mn)}</span></div>
+            <div class="chart-expand-stat"><span class="chart-expand-stat-label">Max</span><span class="chart-expand-stat-val">${formatAxisVal(mx)}</span></div>
+            <div class="chart-expand-stat"><span class="chart-expand-stat-label">Mean</span><span class="chart-expand-stat-val">${formatAxisVal(mean)}</span></div>
+            <div class="chart-expand-stat"><span class="chart-expand-stat-label">Samples</span><span class="chart-expand-stat-val">${samples.length}</span></div>
+        `;
+
+        // Build threshold annotations
+        const annotations = {};
+        if (feat.thresholds) {
+            feat.thresholds.forEach((t, i) => {
+                annotations['thresh' + i] = {
+                    type: 'line',
+                    yMin: t.v,
+                    yMax: t.v,
+                    borderColor: 'rgba(220,70,50,0.3)',
+                    borderWidth: 1,
+                    borderDash: [4, 4],
+                    label: {
+                        display: true,
+                        content: t.label,
+                        position: 'end',
+                        backgroundColor: 'transparent',
+                        color: 'rgba(220,70,50,0.5)',
+                        font: { size: 10, family: 'Inter' },
+                    },
+                };
+            });
         }
+
+        const canvas = document.getElementById('chart-expand-canvas');
+
+        if (_expandedChart) {
+            _expandedChart.destroy();
+            _expandedChart = null;
+        }
+
+        _expandedChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: samples.map(s => new Date(s.timestamp)),
+                datasets: [{
+                    data: values,
+                    borderColor: 'rgba(255,255,255,0.7)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHitRadius: 8,
+                    pointHoverRadius: 4,
+                    pointHoverBackgroundColor: 'rgba(255,255,255,0.9)',
+                    pointHoverBorderColor: 'rgba(255,255,255,0.9)',
+                    fill: true,
+                    backgroundColor: (ctx) => {
+                        const chart = ctx.chart;
+                        const { ctx: c, chartArea } = chart;
+                        if (!chartArea) return 'rgba(255,255,255,0.03)';
+                        const grad = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                        grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+                        grad.addColorStop(1, 'rgba(255,255,255,0)');
+                        return grad;
+                    },
+                    tension: 0.2,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 300 },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(30,35,50,0.85)',
+                        backdropFilter: 'blur(12px)',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        borderWidth: 1,
+                        titleFont: { family: 'JetBrains Mono', size: 11 },
+                        bodyFont: { family: 'JetBrains Mono', size: 12 },
+                        titleColor: 'rgba(255,255,255,0.5)',
+                        bodyColor: 'rgba(255,255,255,0.85)',
+                        padding: { top: 8, bottom: 8, left: 12, right: 12 },
+                        cornerRadius: 6,
+                        displayColors: false,
+                        callbacks: {
+                            title: (items) => {
+                                const d = new Date(items[0].parsed.x);
+                                return d.toUTCString().replace(' GMT', ' UTC');
+                            },
+                            label: (item) => `${feat.label}: ${formatAxisVal(item.parsed.y)} ${feat.unit}`,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            tooltipFormat: 'PPpp',
+                            displayFormats: {
+                                minute: 'HH:mm',
+                                hour: 'HH:mm',
+                                day: 'MMM d',
+                            },
+                        },
+                        ticks: {
+                            color: 'rgba(255,255,255,0.25)',
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            maxTicksLimit: 10,
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.04)',
+                            drawBorder: false,
+                        },
+                    },
+                    y: {
+                        ticks: {
+                            color: 'rgba(255,255,255,0.25)',
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            callback: (v) => formatAxisVal(v),
+                            maxTicksLimit: 6,
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.04)',
+                            drawBorder: false,
+                        },
+                    },
+                },
+            },
+        });
+    } catch (e) {
+        console.error('Expanded chart error:', e);
     }
 }
+
+function closeExpandedChart() {
+    const overlay = document.getElementById('chart-expand-overlay');
+    overlay.classList.remove('open');
+    if (_expandedChart) {
+        _expandedChart.destroy();
+        _expandedChart = null;
+    }
+    _expandedFid = null;
+}
+
+// Wire up expanded chart controls
+document.getElementById('chart-expand-close').addEventListener('click', closeExpandedChart);
+document.getElementById('chart-expand-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeExpandedChart();
+});
+document.querySelectorAll('.chart-expand-tf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const hours = parseInt(btn.dataset.hours);
+        _expandedHours = hours;
+        document.querySelectorAll('.chart-expand-tf-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (_expandedFid) _renderExpandedChart(_expandedFid, hours);
+    });
+});
 
 function mapSignalsToFeatures(signals) {
     const annotations = {};
@@ -1638,7 +1839,7 @@ function drawSparkline(canvas, data, color) {
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
     const values = data.map(d => typeof d === 'number' ? d : d.v);
-    const min = Math.min(...values), max = Math.max(...values);
+    const min = arrMin(values), max = arrMax(values);
     const range = max - min || 1;
     const pad = 2;
     const points = [];
@@ -2612,7 +2813,7 @@ async function openShareView(eq) {
 function _sparklineSvg(values, w, h, lineColor, eventIdx) {
     if (!values || values.length < 2) return '';
     const vals = values.map(v => typeof v === 'object' ? v.value : v);
-    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const mn = arrMin(vals), mx = arrMax(vals);
     const range = mx - mn || 1;
     const pad = 2;
     const points = vals.map((v, i) => {
@@ -4292,39 +4493,71 @@ state._hurricaneMarkers = {};
         }
     });
 
-    // Basemap toggle (Dark / Satellite)
-    let _maptilerKey = '';
+    // Basemap toggle (Dark / Mapbox / MapTiler)
+    let _maptilerKey = '', _mapboxToken = '';
     const savedBasemap = localStorage.getItem('qw_basemap') || 'dark';
 
-    function _applySatellite() {
-        if (!_maptilerKey) return;
-        if (!map.getSource('satellite-tiles')) {
-            map.addSource('satellite-tiles', {
+    const SAT_SOURCES = {
+        mapbox: {
+            id: 'mapbox-sat-tiles',
+            layer: 'mapbox-sat-basemap',
+            tileUrl: () => `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${_mapboxToken}`,
+            attr: '&copy; Mapbox &copy; Maxar',
+        },
+        maptiler: {
+            id: 'maptiler-sat-tiles',
+            layer: 'maptiler-sat-basemap',
+            tileUrl: () => `https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${_maptilerKey}`,
+            attr: '&copy; MapTiler &copy; Planet',
+        },
+    };
+
+    function _applyBasemap(mode) {
+        const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
+
+        for (const cfg of Object.values(SAT_SOURCES)) {
+            if (map.getLayer(cfg.layer)) map.setLayoutProperty(cfg.layer, 'visibility', 'none');
+        }
+
+        if (mode === 'dark') {
+            if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-opacity', 1);
+            return;
+        }
+
+        const cfg = SAT_SOURCES[mode];
+        if (!cfg) return;
+        const key = mode === 'mapbox' ? _mapboxToken : _maptilerKey;
+        if (!key) { console.warn(`No API key for ${mode}`); return; }
+
+        if (!map.getSource(cfg.id)) {
+            map.addSource(cfg.id, {
                 type: 'raster',
-                tiles: [`https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${_maptilerKey}`],
+                tiles: [cfg.tileUrl()],
                 tileSize: 512,
-                maxzoom: 20,
-                attribution: '&copy; MapTiler &copy; Planet',
+                maxzoom: 22,
+                attribution: cfg.attr,
             });
         }
-        if (!map.getLayer('satellite-basemap')) {
+        if (!map.getLayer(cfg.layer)) {
             const firstLayer = map.getStyle().layers.find(l => l.type !== 'background');
             map.addLayer({
-                id: 'satellite-basemap',
+                id: cfg.layer,
                 type: 'raster',
-                source: 'satellite-tiles',
+                source: cfg.id,
                 paint: { 'raster-opacity': 1 },
             }, firstLayer ? firstLayer.id : undefined);
         }
-        map.setLayoutProperty('satellite-basemap', 'visibility', 'visible');
-        const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
+        map.setLayoutProperty(cfg.layer, 'visibility', 'visible');
         if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-opacity', 0);
     }
 
     fetch('/api/config').then(r => r.json()).then(c => {
         _maptilerKey = c.maptiler_key || '';
-        if (savedBasemap === 'satellite' && _maptilerKey && mapReady) _applySatellite();
-        else if (savedBasemap === 'satellite' && _maptilerKey) map.once('load', _applySatellite);
+        _mapboxToken = c.mapbox_token || '';
+        if (savedBasemap !== 'dark') {
+            if (mapReady) _applyBasemap(savedBasemap);
+            else map.once('load', () => _applyBasemap(savedBasemap));
+        }
     }).catch(() => {});
 
     // Restore basemap button state
@@ -4340,17 +4573,7 @@ state._hurricaneMarkers = {};
             panel.querySelectorAll('.legend-basemap-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             localStorage.setItem('qw_basemap', mode);
-
-            if (mode === 'satellite') {
-                if (!_maptilerKey) { console.warn('No MAPTILER_API_KEY set'); return; }
-                _applySatellite();
-            } else {
-                if (map.getLayer('satellite-basemap')) {
-                    map.setLayoutProperty('satellite-basemap', 'visibility', 'none');
-                }
-                const bgLayer = map.getStyle().layers.find(l => l.type === 'background');
-                if (bgLayer) map.setPaintProperty(bgLayer.id, 'background-opacity', 1);
-            }
+            _applyBasemap(mode);
         });
     });
 

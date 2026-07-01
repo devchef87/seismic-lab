@@ -276,18 +276,28 @@ class QuakeStore:
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
+        max_points = 800
+
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             if bucket_minutes and bucket_minutes > 0:
-                bucket_secs = bucket_minutes * 60
-                sql = (
-                    f"SELECT strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', timestamp) AS INTEGER) / {bucket_secs}) * {bucket_secs}, 'unixepoch') as timestamp,"
-                    f" source, metric, AVG(value) as value"
-                    f" FROM samples {where}"
-                    f" GROUP BY 1, source, metric"
-                    f" ORDER BY 1 ASC"
-                )
-                rows = conn.execute(sql, params).fetchall()
+                count = conn.execute(
+                    f"SELECT COUNT(*) FROM samples {where}", params
+                ).fetchone()[0]
+
+                if count > max_points:
+                    step = max(1, count // max_points)
+                    sql = (
+                        f"SELECT timestamp, source, metric, value FROM samples"
+                        f" {where}{' AND' if where else ' WHERE'} rowid % {step} = 0"
+                        f" ORDER BY timestamp ASC"
+                    )
+                    rows = conn.execute(sql, params).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"SELECT timestamp, source, metric, value FROM samples {where} ORDER BY timestamp ASC",
+                        params
+                    ).fetchall()
             else:
                 params.append(limit)
                 rows = conn.execute(

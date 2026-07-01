@@ -57,7 +57,10 @@ async def api_stats():
 
 @app.get("/api/config")
 async def api_config():
-    return {"maptiler_key": os.getenv("MAPTILER_API_KEY", "")}
+    return {
+        "maptiler_key": os.getenv("MAPTILER_API_KEY", ""),
+        "mapbox_token": os.getenv("MAPBOX_ACCESS_TOKEN", ""),
+    }
 
 
 @app.get("/api/earthquakes")
