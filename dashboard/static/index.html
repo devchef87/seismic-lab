@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" />
-    <link rel="stylesheet" href="/static/style.css?v=171">
+    <link rel="stylesheet" href="/static/style.css?v=178">
 </head>
 <body>
     <div class="hud">
@@ -206,6 +206,13 @@
                 </div>
 
                 <div class="panel-section">
+                    <div class="section-label">Escalation Monitor</div>
+                    <div id="esc-feed" class="esc-feed">
+                        <div class="panel-muted">Loading scores...</div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
                     <div class="section-label">Swarm Watch</div>
                     <div id="sw-list" class="sw-list">
                         <div class="panel-muted">Initializing...</div>
@@ -300,6 +307,6 @@
     <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="/static/seismiclab.js?v=171"></script>
+    <script src="/static/seismiclab.js?v=178"></script>
 </body>
 </html>

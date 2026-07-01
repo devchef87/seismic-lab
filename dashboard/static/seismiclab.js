@@ -40,6 +40,8 @@ const state = {
     tidalData: null,
     filterMag: 3.5,
     filterHours: 24,
+    eventScores: {},
+    escSequences: [],
 };
 
 function getAudioCtx() {
@@ -1904,6 +1906,154 @@ function drawSparkline(canvas, data, color) {
     ctx.stroke();
 }
 
+// ── Event Escalation Scores ─────────────────────────────
+function escalationLevel(prob) {
+    if (prob >= 0.80) return 'alert';
+    if (prob >= 0.55) return 'elevated';
+    if (prob >= 0.30) return 'watch';
+    return 'normal';
+}
+
+function escalationColor(prob) {
+    if (prob >= 0.80) return 'rgba(220,70,50,0.9)';
+    if (prob >= 0.55) return 'rgba(230,160,50,0.85)';
+    if (prob >= 0.30) return 'rgba(200,190,70,0.7)';
+    return null;
+}
+
+const PATTERN_LABELS = {
+    isolated: 'Isolated event',
+    early_sequence: 'Early sequence',
+    active_sequence: 'Active sequence',
+    staircase: 'Staircase pattern',
+    double_tap: 'Double tap',
+    accelerating: 'Accelerating',
+    rumble: 'Seismic rumble',
+};
+
+async function fetchEventScores() {
+    try {
+        const resp = await fetch('/api/event-scores');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        state.eventScores = {};
+        state.escSequences = data.sequences || [];
+        if (data.events) {
+            for (const ev of data.events) {
+                state.eventScores[ev.event_id] = ev;
+            }
+        }
+        for (const seq of state.escSequences) {
+            state.eventScores[seq.event_id] = seq;
+            if (seq.latest_event_id) state.eventScores[seq.latest_event_id] = seq;
+        }
+        const filtered = state.escSequences
+            .filter(s => s.sequence_pattern !== 'isolated' && s.escalation_prob >= 0.30);
+        updateEscalationMarkers();
+        updateHighRiskFeed(filtered);
+    } catch (e) { console.error('Event scores fetch:', e); }
+}
+
+function findSequenceForEq(eq) {
+    const byId = state.escSequences.find(s =>
+        s.event_id === eq.id || s.latest_event_id === eq.id);
+    if (byId) return byId;
+    let best = null, bestDist = 200;
+    for (const seq of state.escSequences) {
+        const dlat = seq.lat - eq.lat, dlon = seq.lon - eq.lon;
+        const approxKm = Math.sqrt(dlat * dlat + dlon * dlon) * 111;
+        if (approxKm < bestDist) { bestDist = approxKm; best = seq; }
+    }
+    return best;
+}
+
+function updateEscalationMarkers() {
+    for (const [eid, score] of Object.entries(state.eventScores)) {
+        const entry = state.eqMarkers[eid];
+        if (!entry) continue;
+        const prob = score.escalation_prob;
+        const color = escalationColor(prob);
+        if (!color) {
+            if (entry._escRing) { entry._escRing.remove(); entry._escRing = null; }
+            continue;
+        }
+        const el = entry.marker.getElement();
+        if (!entry._escRing) {
+            const ring = document.createElement('div');
+            ring.className = 'esc-ring';
+            el.appendChild(ring);
+            entry._escRing = ring;
+        }
+        const size = prob >= 0.80 ? 32 : prob >= 0.55 ? 26 : 20;
+        entry._escRing.style.cssText = `width:${size}px;height:${size}px;border-color:${color};animation-duration:${prob >= 0.80 ? '1.5s' : '2.5s'}`;
+    }
+}
+
+function _renderEscItem(seq) {
+    const pct = (seq.escalation_prob * 100).toFixed(0);
+    const level = escalationLevel(seq.escalation_prob);
+    const color = escalationColor(seq.escalation_prob);
+    const pattern = PATTERN_LABELS[seq.sequence_pattern] || seq.sequence_pattern;
+    const nEvents = seq.n_events_in_cluster || seq.sequence_context?.events_7d || 0;
+    const maxMag = seq.max_magnitude || seq.magnitude;
+    const linkId = seq.latest_event_id || seq.event_id;
+    const eqMatch = state.earthquakes.find(q => q.id === linkId || q.id === seq.event_id);
+    const place = (eqMatch && eqMatch.place) || '';
+    const shortPlace = place ? place.replace(/^.+? of /, '') : `${seq.lat.toFixed(1)}, ${seq.lon.toFixed(1)}`;
+    return `<div class="esc-feed-item" data-lat="${seq.lat}" data-lon="${seq.lon}" data-eid="${linkId}">
+        <div class="esc-feed-prob"><span class="esc-dot" style="background:${color}"></span>${pct}%</div>
+        <div class="esc-feed-info">
+            <div class="esc-feed-top">
+                <span class="esc-feed-mag">M${maxMag.toFixed(1)}</span>
+                <span class="esc-feed-place">${shortPlace}</span>
+            </div>
+            <div class="esc-feed-meta">
+                <span class="esc-feed-pattern">${pattern}</span>
+                <span class="esc-feed-ctx">${nEvents} events</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function updateHighRiskFeed(sequences) {
+    const el = document.getElementById('esc-feed');
+    if (!el) return;
+
+    if (!sequences.length) {
+        el.innerHTML = '<div class="panel-muted">No active sequences</div>';
+        return;
+    }
+
+    const top = sequences.slice(0, 3);
+    const rest = sequences.slice(3);
+
+    let html = top.map(_renderEscItem).join('');
+    if (rest.length) {
+        html += `<button class="esc-expand-btn" id="esc-expand-btn">${rest.length} more sequences</button>`;
+        html += `<div class="esc-expanded" id="esc-expanded">${rest.map(_renderEscItem).join('')}</div>`;
+    }
+    el.innerHTML = html;
+
+    if (rest.length) {
+        const btn = document.getElementById('esc-expand-btn');
+        const expanded = document.getElementById('esc-expanded');
+        btn.addEventListener('click', () => {
+            const open = expanded.classList.toggle('open');
+            btn.textContent = open ? 'Show less' : `${rest.length} more sequences`;
+        });
+    }
+
+    el.querySelectorAll('.esc-feed-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const lat = parseFloat(item.dataset.lat);
+            const lon = parseFloat(item.dataset.lon);
+            map.flyTo({ center: [lon, lat], zoom: 7, speed: 1.5 });
+            const eq = state.earthquakes.find(q => q.id === item.dataset.eid);
+            if (eq) showEqDetail(eq);
+        });
+    });
+}
+
 // ── Earthquake markers ───────────────────────────────────
 function updateEarthquakeMarkers(quakes) {
     const cutoff = new Date(Date.now() - state.filterHours * 3600000).toISOString();
@@ -2742,12 +2892,17 @@ function updateEqFeed(quakes) {
         const color = magColor(eq.magnitude);
         const place = (eq.place || 'Unknown').replace(/^.+? of /, '');
         const depth = eq.depth_km ? `${eq.depth_km.toFixed(0)}km` : '';
+        const score = state.eventScores[eq.id];
+        const escDot = score && score.escalation_prob >= 0.30
+            ? `<span class="eq-feed-esc-dot" style="background:${escalationColor(score.escalation_prob)}" title="${(score.escalation_prob * 100).toFixed(0)}% escalation"></span>`
+            : '';
         return `<div class="eq-feed-item" data-lat="${eq.lat}" data-lon="${eq.lon}" data-id="${eq.id}">
             <div class="eq-feed-mag" style="color:${color}">M${eq.magnitude.toFixed(1)}</div>
             <div class="eq-feed-info">
                 <div class="eq-feed-place">${place}</div>
                 <div class="eq-feed-meta">${depth ? depth + ' &middot; ' : ''}${timeAgo(eq.timestamp)}</div>
             </div>
+            ${escDot}
         </div>`;
     }).join('');
 
@@ -2768,9 +2923,45 @@ function showEqDetail(eq) {
     const content = document.getElementById('detail-content');
     const color = magColor(eq.magnitude);
     const place = (eq.place || 'Unknown location').replace(/'/g, '');
+
+    const seq = findSequenceForEq(eq);
+    let escHtml = '';
+    if (seq && seq.escalation_prob >= 0.05) {
+        const prob = seq.escalation_prob;
+        const pct = (prob * 100).toFixed(0);
+        const level = escalationLevel(prob);
+        const eColor = escalationColor(prob) || 'rgba(255,255,255,0.3)';
+        const pattern = PATTERN_LABELS[seq.sequence_pattern] || seq.sequence_pattern;
+        const ctx = seq.sequence_context || {};
+        const nCluster = seq.n_events_in_cluster || ctx.events_7d || 0;
+        const maxM = seq.max_magnitude || ctx.max_mag_7d || 0;
+
+        const trendArrow = ctx.mag_trend_72h > 0.05 ? '↑' : ctx.mag_trend_72h < -0.05 ? '↓' : '→';
+        const trendWord = ctx.mag_trend_72h > 0.05 ? 'rising' : ctx.mag_trend_72h < -0.05 ? 'falling' : 'steady';
+
+        escHtml = `
+            <div class="detail-esc">
+                <div class="detail-esc-bar-wrap">
+                    <div class="detail-esc-bar" style="width:${Math.min(100, pct)}%;background:${eColor}"></div>
+                </div>
+                <div class="detail-esc-header">
+                    <span class="detail-esc-pct" style="color:${eColor}">${pct}%</span>
+                    <span class="detail-esc-label">escalation risk</span>
+                    <span class="esc-pattern-badge">${pattern}</span>
+                </div>
+                <div class="detail-esc-ctx">
+                    <span>${nCluster} events in sequence · max M${maxM.toFixed(1)}</span>
+                    <span>${ctx.events_24h || 0} in 24h · ${ctx.events_7d || 0} in 7d</span>
+                    <span>Trend ${trendArrow} ${trendWord}${ctx.rumble_ratio > 1.2 ? ` · Rumble ratio: ${ctx.rumble_ratio.toFixed(1)}` : ''}</span>
+                    ${ctx.hours_since_last != null ? `<span>Last event: ${ctx.hours_since_last.toFixed(1)}h ago</span>` : ''}
+                </div>
+            </div>`;
+    }
+
     content.innerHTML = `
         <div class="detail-mag" style="color:${color}">M${eq.magnitude.toFixed(1)}</div>
         <div class="detail-place">${eq.place || 'Unknown location'}</div>
+        ${escHtml}
         <div class="detail-grid">
             <div><div class="detail-label">Depth</div><div class="detail-value">${eq.depth_km ? eq.depth_km.toFixed(1) + ' km' : '--'}</div></div>
             <div><div class="detail-label">Time</div><div class="detail-value">${timeAgo(eq.timestamp)}</div></div>
@@ -3994,9 +4185,11 @@ async function init() {
         fetch('/api/volcanic/activity').then(r => r.ok ? r.json() : null).then(d => { if (d) { updateVolcanicSummary(d); updateVolcanoMarkers(d); } }).catch(() => {}),
         fetch('/api/seedlink/stations').then(r => r.ok ? r.json() : null).then(d => { if (d) updateStationMarkers(d); }).catch(() => {}),
         fetch('/api/tier2-watch').then(r => r.ok ? r.json() : null).then(d => { if (d) updateSwarmWatch(d); }).catch(() => {}),
+        fetchEventScores(),
     ]);
     setInterval(refreshFaultRisk, CONFIG.FAULT_RISK_INTERVAL);
     setInterval(refreshHeatmap, CONFIG.HEATMAP_INTERVAL);
+    setInterval(fetchEventScores, 60000);
     setInterval(async () => {
         try {
             const resp = await fetch('/api/seismicity/summary');
@@ -4423,9 +4616,9 @@ state._hurricaneMarkers = {};
                 setMarkerVisibility(state.tidalMarkers, on);
                 break;
             case 'ionosphere':
-                try {
+                if (map.getLayer('iono-heatmap')) {
                     map.setLayoutProperty('iono-heatmap', 'visibility', on ? 'visible' : 'none');
-                } catch(e) {}
+                }
                 if (on && !map.getSource('iono-tec')) loadIonosphere();
                 break;
             case 'wx-warnings':

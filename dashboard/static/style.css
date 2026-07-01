@@ -730,14 +730,14 @@ html, body {
 }
 .detail-label {
     font-size: 9px;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.5);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 2px;
 }
 .detail-value {
     font-size: 11px;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255,255,255,0.75);
 }
 .detail-predict-btn {
     font-family: 'Inter', sans-serif;
@@ -1272,6 +1272,165 @@ html, body {
 }
 
 /* ── Swarm Watch ────────────────────────────── */
+/* ── Escalation Monitor ─────────────── */
+.esc-feed { display: flex; flex-direction: column; gap: 0; }
+.esc-feed-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+    border-radius: 4px;
+}
+.esc-feed-item:hover { background: rgba(255,255,255,0.04); }
+.esc-feed-prob {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    min-width: 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255,255,255,0.55);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.esc-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.esc-feed-info { flex: 1; min-width: 0; }
+.esc-feed-top {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.esc-feed-mag {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.55);
+    font-family: 'JetBrains Mono', monospace;
+}
+.esc-feed-place {
+    font-size: 10.5px;
+    color: rgba(255,255,255,0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.esc-feed-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+.esc-feed-pattern {
+    font-size: 9px;
+    color: rgba(255,255,255,0.25);
+    text-transform: lowercase;
+}
+.esc-feed-ctx {
+    font-size: 9px;
+    color: rgba(255,255,255,0.2);
+}
+.esc-expand-btn {
+    display: block;
+    width: 100%;
+    padding: 6px 0;
+    margin-top: 2px;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.25);
+    font-size: 10px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.12s;
+}
+.esc-expand-btn:hover { color: rgba(255,255,255,0.45); }
+.esc-expanded {
+    display: none;
+}
+.esc-expanded.open {
+    display: block;
+}
+.esc-pattern-badge {
+    font-size: 9px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.5);
+    text-transform: lowercase;
+}
+
+/* Escalation ring on map markers */
+.esc-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1.5px solid;
+    pointer-events: none;
+    animation: esc-pulse ease-in-out infinite;
+}
+@keyframes esc-pulse {
+    0%, 100% { opacity: 0.3; transform: translate(-50%,-50%) scale(0.85); }
+    50%      { opacity: 0.8; transform: translate(-50%,-50%) scale(1.15); }
+}
+
+/* Escalation dot in eq feed */
+.eq-feed-esc-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Detail panel escalation section */
+.detail-esc {
+    margin: 10px 0 14px;
+    padding: 0;
+}
+.detail-esc-bar-wrap {
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.detail-esc-bar {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+.detail-esc-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.detail-esc-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+}
+.detail-esc-label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.detail-esc-ctx {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.55);
+    font-family: 'JetBrains Mono', monospace;
+}
+
 .sw-list { display: flex; flex-direction: column; gap: 0; }
 .sw-row {
     padding: 5px 4px;

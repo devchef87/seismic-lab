@@ -29,6 +29,7 @@ MODEL = os.path.join(te.MODEL_DIR, "tier2_watch_lgb.txt")
 CALIB = os.path.join(te.MODEL_DIR, "tier2_watch_calib.npz")
 OUT_JSON = os.path.join(te.CACHE_DIR, "tier2_watch.json")
 HISTORY_JSON = os.path.join(te.CACHE_DIR, "tier2_history.json")
+EVENT_JSON = os.path.join(te.CACHE_DIR, "event_scores.json")
 CACHE_WINDOW_DAYS = 200    # history depth for trailing features
 CACHE_REFRESH_H = 1.0      # rebuild global cache every hour
 HISTORY_KEEP_H = 48
@@ -209,6 +210,14 @@ class Engine:
         self.cache = GlobalCache()
         self.history = self._load_history()
         self.last_event_ts = self._max_event_ts()
+        # Event-level escalation scorer (sequence-based, AUC 0.87)
+        try:
+            from lab.event_scorer import EventScorer
+            self.event_scorer = EventScorer()
+            print("  [event_scorer] loaded event escalation model")
+        except Exception as e:
+            self.event_scorer = None
+            print(f"  [event_scorer] not available: {e}")
         self.full_rescore()
 
     def _cells(self, conn):
@@ -245,6 +254,63 @@ class Engine:
         self.history[cid] = h
         return then, delta, direction
 
+    def _score_new_events(self):
+        """Score new earthquakes with the event-level model and write event_scores.json."""
+        if not self.event_scorer:
+            return
+        try:
+            conn = sqlite3.connect(te.DB_PATH, timeout=60)
+            new_scores = self.event_scorer.score_new(conn)
+            conn.close()
+            if not new_scores:
+                return
+            # Load existing scores, append, keep last 48h
+            existing = []
+            try:
+                existing = json.load(open(EVENT_JSON)).get("events", [])
+            except Exception:
+                pass
+            all_scores = existing + new_scores
+            # Dedup by event_id (keep latest)
+            seen = {}
+            for s in all_scores:
+                seen[s["event_id"]] = s
+            all_scores = sorted(seen.values(), key=lambda s: s["time"], reverse=True)
+            # Keep last 48h only
+            import pandas as pd
+            cutoff = (pd.Timestamp.utcnow() - pd.Timedelta(hours=48)).isoformat()
+            all_scores = [s for s in all_scores if s["time"] >= cutoff]
+
+            # Cluster nearby events into one entry per sequence
+            from lab.event_scorer import cluster_scores
+            clusters = cluster_scores(all_scores, radius_km=150)
+            high_risk = [c for c in clusters if c["escalation_prob"] >= 0.3]
+            payload = {
+                "generated": pd.Timestamp.utcnow().isoformat(),
+                "model": "event_escalation_v1",
+                "model_auc": 0.87,
+                "total_scored": len(all_scores),
+                "n_sequences": len(clusters),
+                "high_risk_count": len(high_risk),
+                "sequences": clusters,           # deduplicated: one per location
+                "events": all_scores[:200],       # raw individual scores (if FE wants them)
+            }
+            _js = lambda o: float(o) if isinstance(o, np.floating) else (
+                int(o) if isinstance(o, np.integer) else str(o))
+            fd, tmp = tempfile.mkstemp(dir=te.CACHE_DIR, suffix=".tmp")
+            with os.fdopen(fd, "w") as f:
+                json.dump(payload, f, indent=2, default=_js)
+            os.replace(tmp, EVENT_JSON)
+            n_high = len(high_risk)
+            if n_high:
+                top = max(high_risk, key=lambda s: s["escalation_prob"])
+                print(f"  [event_scorer] {len(new_scores)} scored, {n_high} high-risk | "
+                      f"top: M{top['magnitude']} {top['sequence_pattern']} p={top['escalation_prob']}")
+            else:
+                print(f"  [event_scorer] {len(new_scores)} scored, none high-risk")
+        except Exception as e:
+            print(f"  [event_scorer] error: {e}")
+
     def full_rescore(self):
         conn = sqlite3.connect(te.DB_PATH, timeout=60)
         cells = self._cells(conn)
@@ -254,6 +320,7 @@ class Engine:
             if s:
                 self.watch_state[cid] = (cell, s)
         conn.close()
+        self._score_new_events()
         self.write()
 
     def tick(self):
@@ -272,6 +339,7 @@ class Engine:
             if new and new != self.last_event_ts:
                 self.last_event_ts = new
                 self.full_rescore()
+                self._score_new_events()
                 print(f"  [tick] new events -> re-detected swarms ({len(self.watch_state)} active)")
             return
 

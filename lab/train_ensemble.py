@@ -168,6 +168,12 @@ CATALOG_FEATURES = [
     "omori_deficit",
     "subduction_proxy",
     "foreshock_curvature",
+    "seq_consec_up_7d",
+    "seq_rumble_ratio_7d",
+    "seq_mag_trend_72h",
+    "seq_double_tap_7d",
+    "seq_depth_to_peak_7d",
+    "seq_active_ratio",
 ]
 
 GEOMAG_FEATURES = [
@@ -607,6 +613,83 @@ def _sliding_deep_fraction(event_epochs, event_depths, hour_epochs, window_sec, 
     return result
 
 
+def _sliding_sequence_features(event_epochs, event_mags, hour_epochs, window_7d, window_72h):
+    """Sequence-shape features: staircase, rumble, trend, double-tap, peak depth, burst ratio.
+    Computed per hour from trailing event windows."""
+    n = len(hour_epochs)
+    ne = len(event_epochs)
+    W30D = 30 * 86400
+
+    consec_up = np.zeros(n, dtype=np.float32)
+    rumble_ratio = np.zeros(n, dtype=np.float32)
+    mag_trend = np.zeros(n, dtype=np.float32)
+    double_tap = np.zeros(n, dtype=np.float32)
+    depth_to_peak = np.zeros(n, dtype=np.float32)
+    active_ratio = np.zeros(n, dtype=np.float32)
+
+    for i in range(n):
+        h = hour_epochs[i]
+
+        # Collect events in 7d window
+        r7 = np.searchsorted(event_epochs, h, side='right')
+        l7 = np.searchsorted(event_epochs, h - window_7d, side='left')
+        if r7 <= l7:
+            continue
+        mags_7d = event_mags[l7:r7]
+        nm = len(mags_7d)
+
+        # 1. Longest consecutive-up run
+        if nm >= 2:
+            run = 1; best = 1
+            for k in range(1, nm):
+                if mags_7d[k] >= mags_7d[k-1] - 0.05:
+                    run += 1
+                    if run > best:
+                        best = run
+                else:
+                    run = 1
+            consec_up[i] = best
+
+        # 2. Rumble ratio: max / median (high = one event ≫ rest)
+        if nm >= 3:
+            med = np.median(mags_7d)
+            if med > 0:
+                rumble_ratio[i] = mags_7d.max() / med
+
+        # 3. Magnitude trend (72h window, linear slope)
+        r72 = r7
+        l72 = np.searchsorted(event_epochs, h - window_72h, side='left')
+        if r72 - l72 >= 3:
+            m72 = event_mags[l72:r72]
+            x = np.arange(len(m72), dtype=np.float32)
+            xm = x.mean()
+            denom = ((x - xm) ** 2).sum()
+            if denom > 0:
+                mag_trend[i] = ((x - xm) * (m72 - m72.mean())).sum() / denom
+
+        # 4. Double-tap: consecutive pair within ±0.3, then ≥+1.0 jump
+        if nm >= 3:
+            taps = 0
+            for k in range(nm - 2):
+                if abs(mags_7d[k] - mags_7d[k+1]) <= 0.3 and \
+                   mags_7d[k+2] >= mags_7d[k] + 1.0:
+                    taps += 1
+            double_tap[i] = taps
+
+        # 5. Depth to peak (position of max event, 0-indexed from newest)
+        if nm >= 2:
+            peak_pos = np.argmax(mags_7d)
+            depth_to_peak[i] = peak_pos
+
+        # 6. Active ratio: events in 7d / events in 30d
+        l30 = np.searchsorted(event_epochs, h - W30D, side='left')
+        n30 = r7 - l30
+        if n30 > 0:
+            active_ratio[i] = nm / n30
+
+    return consec_up, rumble_ratio, mag_trend, double_tap, depth_to_peak, active_ratio
+
+
 def build_zone_catalog_features(conn, zone, hour_epochs):
     """Build all catalog-derived features for one zone."""
     rows = conn.execute("""
@@ -775,6 +858,15 @@ def build_zone_catalog_features(conn, zone, hour_epochs):
     curv = np.zeros(n, dtype=np.float32)
     curv[12:] = c6h[12:] - 2 * c6h[6:-6] + c6h[:-12]
     feats[:, fi["foreshock_curvature"]] = curv
+
+    # Sequence trajectory features
+    seq = _sliding_sequence_features(ee, em, hour_epochs, 7 * 86400, 72 * H1)
+    feats[:, fi["seq_consec_up_7d"]] = seq[0]
+    feats[:, fi["seq_rumble_ratio_7d"]] = seq[1]
+    feats[:, fi["seq_mag_trend_72h"]] = seq[2]
+    feats[:, fi["seq_double_tap_7d"]] = seq[3]
+    feats[:, fi["seq_depth_to_peak_7d"]] = seq[4]
+    feats[:, fi["seq_active_ratio"]] = seq[5]
 
     return feats
 

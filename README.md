@@ -82,16 +82,66 @@ The HUD provides:
 - **Volcanic activity**, thermal anomaly tracking near active volcanoes
 - **Swarm-escalation watch**, the live forecasting panel (see below), calibrated probability that an active swarm escalates to a mainshock
 
-## Swarm-Escalation Watch (the forecasting model)
+## Event-Level Escalation Model (the primary forecasting model)
 
-The forecasting panel doesn't try to predict arbitrary earthquakes, that turned out to be mostly an illusion. When I declustered the catalog and tested the original "will an M5+ happen in this zone" model on *independent* mainshocks, it scored near random (~0.54 AUC). Almost all the apparent skill was the trivial fact that aftershocks follow big quakes (Omori's law). So the model was rebuilt around the one question that's both honest and useful:
+The original zone-level model tried to answer "will an M5+ happen here this hour?" across a grid. When declustered and tested on independent mainshocks, it scored near random (~0.54 AUC) — almost all the apparent skill was the trivial fact that aftershocks follow big quakes (Omori's law).
 
-> A seismic **swarm is active** here right now. What's the calibrated probability it
-> **escalates to an independent M5+ mainshock within 72h**, versus fizzling out (which ~94% of swarms do)?
+The breakthrough came from flipping the paradigm: instead of polling zones on a schedule, **score each earthquake on arrival**. When a new quake comes in, the system immediately evaluates the sequence context at that location — how many prior events, what magnitude trajectory, what pattern shape — and returns an escalation probability. Like a webhook, not a cron job.
 
-It's **declustered** (independent mainshocks only, no aftershock inflation), **calibrated** (when it says 30%, ~30% actually escalate, verified on held-out data), and **multi-signal**, a LightGBM model over seismicity rate/acceleration, b-value, tidal stress, DART seafloor loading, GPS crustal deformation, and a volcanic prior. On a future-holdout test the pooled discrimination is ~0.66 AUC, but the honest *within-zone* number — can it rank which swarm in a given region escalates? — is only ~0.52, near chance globally. Real within-zone skill exists in a handful of well-sampled zones (**Alaska, South America, New Zealand, Japan/Kurils**, ~0.59–0.73 AUC, plus **California** ~0.63 after a deep catalog backfill), so the live watch only raises alerts there and shows swarms elsewhere as informational. It's genuinely hard and far from solved — but it's an honest, calibrated number on the right problem, scoped to where it actually works.
+> Given this earthquake and the sequence at its location, what's the probability
+> a **M+1.0 larger event** follows within **7 days** at the same location
+> (Gardner-Knopoff magnitude-scaled interaction radius)?
 
-Alert levels: **WATCH**, **ADVISORY**, **NORMAL** — surfaced only in the validated zones above. (A WARNING tier was dropped: in holdout its highest-confidence calls escalated 0% of the time — all false alarms — so it's capped to WATCH.) The panel is a live watchlist, often short or empty (empty = nothing building, not "all clear").
+**Performance: 0.87 macro AUC** across 13 zones (up from 0.49 with the old 221-feature zone model). Every zone above 0.77. Uses only **25 catalog/sequence features** — no environmental data needed.
+
+### How it works
+
+The model discovered that **sequence shape is the entire signal**. The top 4 features account for 74% of importance:
+
+| Feature | Importance | What it captures |
+|---|---|---|
+| `mag_range_7d` | 32.5% | Spread between smallest and largest event in 7-day window |
+| `rumble_ratio` | 21.5% | Max magnitude / median — high means one event towers over the rest |
+| `trigger_mag` | 11.0% | Magnitude of the current earthquake |
+| `n_events_24h` | 9.2% | How active this location is right now |
+
+### Sequence patterns
+
+Analysis of 641K M2.5+ events (2015–present) revealed distinct trajectory shapes that dramatically lift escalation probability:
+
+| Pattern | Description | Escalation rate |
+|---|---|---|
+| **Rumble** | 5+ events, one significantly larger than rest | 85.2% |
+| **Double-tap** | Two similar-magnitude events, then a jump | 67.0% |
+| **Staircase** | 3+ consecutive magnitude increases | 38.7% |
+| **Accelerating** | Positive magnitude trend | 15–45% |
+| **Active sequence** | 3+ events, no dominant shape | 10–35% |
+| **Isolated** | No nearby prior activity | 2–15% |
+
+Event count follows a logarithmic curve: 0→5 events gains +16pp (33%→49%), but 5→50 only adds +36pp more. The knee is at ~5 events. Pattern-conditioned lift adds +16–29pp over flat sequences at the same event count.
+
+### What didn't work
+
+Environmental features (DART seafloor pressure, solar wind, GOES magnetometer, tidal potential, Dst, Kp, IMF) were tested as a second-stage modulator on top of the sequence model. Result: **+0.0004 macro AUC** — zero lift. None of the 10 environmental features cracked the top 15. The sequence pattern captures everything the model needs.
+
+### Alert thresholds
+
+| Probability | UI treatment |
+|---|---|
+| < 0.30 | Don't show in escalation monitor (normal map dots) |
+| 0.30 – 0.55 | **Watch** — yellow, show sequence context |
+| 0.55 – 0.80 | **Elevated** — orange, prominent marker |
+| > 0.80 | **Alert** — red, notification-worthy |
+
+Events within 150km are clustered into one entry per active sequence. A typical day has ~400 scored events but only ~10–15 active sequences above 30%.
+
+## Swarm-Escalation Watch (zone-level model)
+
+The zone-level swarm model still runs in parallel, providing an area-level view: "these zones have active swarms." It's a LightGBM model over seismicity rate/acceleration, b-value, tidal stress, DART seafloor loading, GPS crustal deformation, and a volcanic prior. Pooled AUC ~0.66, with real within-zone skill in **Alaska, South America, New Zealand, Japan/Kurils** (~0.59–0.73 AUC) and **California** (~0.63 after deep backfill).
+
+The event-level model (per-earthquake granularity) and zone-level model (swarm cluster view) complement each other — both run from the realtime engine.
+
+Alert levels: **WATCH**, **ADVISORY**, **NORMAL** — surfaced only in the validated zones above.
 
 ### Running it
 
@@ -115,10 +165,15 @@ The `lab/` directory contains reproducible experiments. These are exploratory, I
 - **`train_stgnn.py`**, Spatio-Temporal Graph Neural Network for multi-zone prediction.
 - **`train_zone_test.py`**, Zone-focused training with full feature set (seismic + solar + tidal + DART).
 - **`deep_backfill.py`**, 11-year (2015–present) seismic waveform backfill from FDSN/IRIS, across 53 stations (Alaska, Chile, Taiwan, Kamchatka, NZ, Caribbean + the GSN backbone).
-- **`train_ensemble.py`**, the multi-signal feature pipeline + LightGBM trainer (occurrence and tier-2 escalation objectives) across 13 zones.
+- **`train_ensemble.py`**, the multi-signal feature pipeline + LightGBM trainer (occurrence and tier-2 escalation objectives) across 13 zones. Includes sequence trajectory features (rumble, staircase, double-tap).
 - **`declustering_experiment.py`**, Gardner-Knopoff declustering test that showed the original occurrence model was largely scoring aftershocks, the finding that motivated the swarm-escalation reframe.
 - **`tier2_escalation.py`**, the swarm-escalation discrimination experiment (catalog-only vs multi-signal, confirming the non-seismic signals add real skill).
 - **`tier2_watch.py`**, trains + calibrates the deployed model and writes the alert-banded watch bundle.
+
+Scripts (`scripts/`):
+- **`train_event_model.py`**, the event-level escalation model trainer (0.87 AUC). 25 features, 641K events, 3-stage ablation (catalog-only, catalog+env, M4+-only). This is the primary model.
+- **`sequence_analysis.py`**, full sequence chain analysis: parameter sweep for interaction radius, trajectory shapes (rumble, staircase, double-tap), event-count vs escalation curves.
+- **`gated_ablation.py`**, 4-experiment ablation showing environmental features add zero lift when gated on active sequences.
 
 ## Architecture
 
@@ -132,7 +187,8 @@ event_analyzer.py      Post-event analysis
 alerts.py              Email notifications (optional)
 
 run_realtime.sh        Launcher for the 3 swarm-escalation services
-lab/realtime_engine.py    Event-driven tier-2 scoring -> data/tier2_watch.json
+lab/event_scorer.py       Event-level escalation scorer (25 features, 0.87 AUC)
+lab/realtime_engine.py    Event-driven scoring -> data/tier2_watch.json + event_scores.json
 lab/ingest_emsc_live.py   Live EMSC small-event (foreshock) poller
 lab/ingest_volcanic_alerts.py  USGS HANS volcanic alert ingest
 

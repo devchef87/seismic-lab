@@ -1026,6 +1026,15 @@ async def api_tier2_watch():
     return JSONResponse(content=json_mod.loads(watch_path.read_text()))
 
 
+@app.get("/api/event-scores")
+async def api_event_scores():
+    """Event-level escalation scores — each earthquake scored on arrival."""
+    es_path = Path(__file__).parent / "data" / "event_scores.json"
+    if not es_path.exists():
+        return JSONResponse(content={"generated": None, "total_scored": 0, "events": []})
+    return JSONResponse(content=json_mod.loads(es_path.read_text()))
+
+
 @app.get("/api/signals/latest")
 async def api_signals_latest():
     results = {}
