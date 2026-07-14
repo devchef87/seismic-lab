@@ -362,6 +362,7 @@ class Engine:
             with os.fdopen(fd, "w") as f:
                 json.dump(payload, f, indent=2, default=_js)
             os.replace(tmp, EVENT_JSON)
+            self._archive_forecasts(big_event_watch, clusters, _js)
             n_high = len(high_risk)
             if n_high:
                 top = max(high_risk, key=lambda s: s["escalation_prob"])
@@ -376,6 +377,49 @@ class Engine:
                       f"({bw['lat']:.1f},{bw['lon']:.1f})")
         except Exception as e:
             print(f"  [event_scorer] error: {e}")
+
+    def _archive_forecasts(self, big_event_watch, clusters, _js):
+        """Append an hourly forecast snapshot to data/forecast_archive/YYYY-MM.jsonl
+        so watch performance can be verified against actual outcomes later.
+        One line per UTC hour: the big-event watch, elevated sequences, and
+        non-NORMAL tier2 alerts, all compact."""
+        try:
+            now = pd.Timestamp.utcnow()
+            hour_key = now.strftime("%Y-%m-%dT%H")
+            if getattr(self, "_last_archive_hour", None) == hour_key:
+                return
+            self._last_archive_hour = hour_key
+            arch_dir = os.path.join(te.CACHE_DIR, "forecast_archive")
+            os.makedirs(arch_dir, exist_ok=True)
+            tier2 = []
+            for cid, (cell, s) in self.watch_state.items():
+                if s.get("level") and s["level"] != "NORMAL":
+                    c0 = cell.get("centroid", [None, None])
+                    tier2.append({"id": cid, "lat": c0[0], "lon": c0[1],
+                                  "prob": round(s.get("prob", 0), 3),
+                                  "level": s["level"]})
+            line = {
+                "hour": hour_key,
+                "ts": now.isoformat(),
+                "big_event_watch": [
+                    {"lat": w["lat"], "lon": w["lon"], "m6_prob": w["m6_prob"],
+                     "m55_prob": w["m55_prob"], "level": w["level"],
+                     "first_event": w["first_event"]}
+                    for w in big_event_watch],
+                "sequences": [
+                    {"lat": c["lat"], "lon": c["lon"],
+                     "esc_prob": c["escalation_prob"],
+                     "pattern": c["sequence_pattern"],
+                     "max_mag": c["max_magnitude"],
+                     "n": c["n_events_in_cluster"]}
+                    for c in clusters if c["escalation_prob"] >= 0.5],
+                "tier2_alerts": tier2,
+            }
+            path = os.path.join(arch_dir, now.strftime("%Y-%m") + ".jsonl")
+            with open(path, "a") as f:
+                f.write(json.dumps(line, default=_js) + "\n")
+        except Exception as e:
+            print(f"  [archive] error: {e}")
 
     def full_rescore(self):
         conn = sqlite3.connect(te.DB_PATH, timeout=60)
