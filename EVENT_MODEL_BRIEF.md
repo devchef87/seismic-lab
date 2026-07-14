@@ -1,5 +1,9 @@
 # Event-Level Escalation Model — Frontend Integration Brief
 
+> **Update:** the `/api/event-scores` payload now also carries a regional
+> **big-event (M6+) watch** — see `BIG_EVENT_WATCH_BRIEF.md`. Additive only;
+> nothing in this document changed.
+
 ## What Changed
 
 We built a fundamentally new model that scores **individual earthquakes on arrival** instead of polling zones hourly. When a new quake comes in, the system immediately evaluates the sequence context at that location and returns an escalation probability.

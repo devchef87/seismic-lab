@@ -13,7 +13,7 @@ Architecture that makes it genuinely realtime without rescoring everything:
 Run:  python realtime_engine.py --tick 60        # event-driven, 60s ticks
       python realtime_engine.py --once           # single full pass (cron-friendly)
 """
-import os, sys, json, time, argparse, tempfile
+import os, sys, json, time, argparse, tempfile, math
 import numpy as np
 import pandas as pd
 import sqlite3
@@ -51,7 +51,17 @@ def _load_bundle():
     cal = lambda r: float(np.interp(r, ix, iy, left=iy[0], right=iy[-1]))
     def alert(r, c):
         return 3 if c >= wp else (2 if r >= thr[1] else (1 if r >= thr[0] else 0))
-    return model, cal, alert, base
+    # Column map: the runtime feature builder (te.ALL_FEATURES) may have MORE
+    # features than the deployed model was trained with (features are appended
+    # as experiments land). Select/reorder runtime columns by the model's own
+    # saved feature names so alignment never depends on list position.
+    runtime_pos = {name: i for i, name in enumerate(te.ALL_FEATURES)}
+    missing = [f for f in model.feature_name() if f not in runtime_pos]
+    if missing:
+        raise RuntimeError(f"deployed model needs features the runtime no "
+                           f"longer builds: {missing[:5]}")
+    col_idx = np.array([runtime_pos[f] for f in model.feature_name()])
+    return model, cal, alert, base, col_idx
 
 
 class GlobalCache:
@@ -191,14 +201,14 @@ def detect_swarm_clusters(conn, hour_epochs, trail_h=None, eps_km=150.0, min_sam
     return cells
 
 
-def score_cell(conn, cell, cache, model, cal, alert):
+def score_cell(conn, cell, cache, model, cal, alert, col_idx):
     feats = te.build_cell_features(conn, cell, cache.hours, cache.hour_epochs,
                                    cache.sig, cache.evt, cache.tidal_times, cache.tidal_values)
     epi, _ = te.build_tier2_labels(conn, cell, cache.hour_epochs, te.MIN_MAG_TARGET)
     last = len(cache.hours) - 1
     if epi[last] < 0.5:
         return None  # no active swarm in this cell now
-    raw = float(model.predict(feats[last:last + 1])[0])
+    raw = float(model.predict(feats[last:last + 1][:, col_idx])[0])
     c = cal(raw)
     return {"raw": raw, "prob": c, "level": LEVEL_NAMES[alert(raw, c)]}
 
@@ -206,7 +216,7 @@ def score_cell(conn, cell, cache, model, cal, alert):
 class Engine:
     def __init__(self, mode="cluster"):
         self.mode = mode  # "cluster" (dynamic, global) or "grid" (fixed zones)
-        self.model, self.cal, self.alert, self.base = _load_bundle()
+        self.model, self.cal, self.alert, self.base, self.col_idx = _load_bundle()
         self.cache = GlobalCache()
         self.history = self._load_history()
         self.last_event_ts = self._max_event_ts()
@@ -218,6 +228,13 @@ class Engine:
         except Exception as e:
             self.event_scorer = None
             print(f"  [event_scorer] not available: {e}")
+        # Big-event (M6+ within 100km/30d) regional watch scorer
+        try:
+            from lab.big_event_scorer import BigEventScorer
+            self.big_event_scorer = BigEventScorer()
+        except Exception as e:
+            self.big_event_scorer = None
+            print(f"  [big_event] not available: {e}")
         self.full_rescore()
 
     def _cells(self, conn):
@@ -261,6 +278,18 @@ class Engine:
         try:
             conn = sqlite3.connect(te.DB_PATH, timeout=60)
             new_scores = self.event_scorer.score_new(conn)
+            # Attach big-event (M6+ regional) probabilities to each new score
+            if self.big_event_scorer:
+                for s in new_scores:
+                    try:
+                        be = self.big_event_scorer.score_event(
+                            conn, s["time"], s["magnitude"], s["depth_km"],
+                            s["lat"], s["lon"])
+                        s["big_event_probs"] = be["probs"]
+                        s["big_event_first"] = be["first_event"]
+                        s["big_event_context"] = be["regional_context"]
+                    except Exception as e:
+                        print(f"  [big_event] error scoring {s['event_id']}: {e}")
             conn.close()
             if not new_scores:
                 return
@@ -285,6 +314,37 @@ class Engine:
             from lab.event_scorer import cluster_scores
             clusters = cluster_scores(all_scores, radius_km=150)
             high_risk = [c for c in clusters if c["escalation_prob"] >= 0.3]
+
+            # Big-event watch: regions where the M6-within-100km/30d model is
+            # elevated. Uses the max big-event prob among each cluster's events.
+            from lab.big_event_scorer import WATCH_PROB, ELEVATED_PROB
+            by_loc = {}
+            for s in all_scores:
+                p6 = (s.get("big_event_probs") or {}).get("6.0", 0)
+                if p6 < WATCH_PROB:
+                    continue
+                for c in clusters:
+                    dla = (c["lat"] - s["lat"]) * 111.0
+                    dlo = (c["lon"] - s["lon"]) * 111.0 * \
+                        math.cos(math.radians(c["lat"]))
+                    if dla * dla + dlo * dlo <= 150.0 ** 2:
+                        cur = by_loc.get(c["event_id"])
+                        if cur is None or p6 > cur["m6_prob"]:
+                            by_loc[c["event_id"]] = {
+                                "cluster_id": c["event_id"],
+                                "lat": c["lat"], "lon": c["lon"],
+                                "time": s["time"],
+                                "m6_prob": p6,
+                                "m55_prob": (s.get("big_event_probs") or {}).get("5.5", 0),
+                                "level": "elevated" if p6 >= ELEVATED_PROB else "watch",
+                                "first_event": s.get("big_event_first", False),
+                                "regional_context": s.get("big_event_context", {}),
+                                "n_events_in_cluster": c["n_events_in_cluster"],
+                                "max_magnitude": c["max_magnitude"],
+                            }
+                        break
+            big_event_watch = sorted(by_loc.values(), key=lambda w: -w["m6_prob"])
+
             payload = {
                 "generated": pd.Timestamp.utcnow().isoformat(),
                 "model": "event_escalation_v1",
@@ -292,6 +352,7 @@ class Engine:
                 "total_scored": len(all_scores),
                 "n_sequences": len(clusters),
                 "high_risk_count": len(high_risk),
+                "big_event_watch": big_event_watch,  # M6-regional watch, few entries
                 "sequences": clusters,           # deduplicated: one per location
                 "events": all_scores[:200],       # raw individual scores (if FE wants them)
             }
@@ -308,6 +369,11 @@ class Engine:
                       f"top: M{top['magnitude']} {top['sequence_pattern']} p={top['escalation_prob']}")
             else:
                 print(f"  [event_scorer] {len(new_scores)} scored, none high-risk")
+            if big_event_watch:
+                bw = big_event_watch[0]
+                print(f"  [big_event] {len(big_event_watch)} region(s) on watch | "
+                      f"top: p(M6)={bw['m6_prob']:.2f} {bw['level']} at "
+                      f"({bw['lat']:.1f},{bw['lon']:.1f})")
         except Exception as e:
             print(f"  [event_scorer] error: {e}")
 
@@ -316,7 +382,7 @@ class Engine:
         cells = self._cells(conn)
         self.watch_state = {}
         for cid, cell in cells.items():
-            s = score_cell(conn, cell, self.cache, self.model, self.cal, self.alert)
+            s = score_cell(conn, cell, self.cache, self.model, self.cal, self.alert, self.col_idx)
             if s:
                 self.watch_state[cid] = (cell, s)
         conn.close()
@@ -357,7 +423,7 @@ class Engine:
                             cell["lon_range"][0] <= lo <= cell["lon_range"][1]):
                         affected.add(cid)
             for cid in affected:
-                s = score_cell(conn, self.cache.cells[cid], self.cache, self.model, self.cal, self.alert)
+                s = score_cell(conn, self.cache.cells[cid], self.cache, self.model, self.cal, self.alert, self.col_idx)
                 if s:
                     self.watch_state[cid] = (self.cache.cells[cid], s)
                 else:
