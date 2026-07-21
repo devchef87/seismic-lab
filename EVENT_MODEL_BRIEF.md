@@ -116,12 +116,18 @@ This typically yields 5-15 entries — the genuine active sequences worth watchi
 
 ### Suggested Alert Thresholds
 
-| Prob | Suggested UI treatment |
+> **2026-07-21: probabilities recalibrated — thresholds changed.**
+> `escalation_prob` is now a calibrated empirical frequency (0.30 means ~30%
+> of identical historical situations escalated — verified against live
+> outcomes). Raw scores used to run 2–4× hot, so values dropped across the
+> board and the old 0.30/0.55/0.80 bands would show almost nothing. Use:
+
+| Prob (calibrated) | Suggested UI treatment |
 |---|---|
-| < 0.30 | Don't show in escalation monitor (still show on map as normal dots) |
-| 0.30 – 0.55 | **Watch** — yellow highlight, show sequence context |
-| 0.55 – 0.80 | **Elevated** — orange, prominent marker, show event chain on click |
-| > 0.80 | **Alert** — red, bold display, notification-worthy |
+| < 0.10 | Don't show in escalation monitor (still show on map as normal dots) |
+| 0.10 – 0.30 | **Watch** — yellow highlight, show sequence context |
+| 0.30 – 0.50 | **Elevated** — orange, prominent marker, show event chain on click |
+| > 0.50 | **Alert** — red, bold display, notification-worthy (realized ~60%+ historically) |
 
 ## Relationship to Existing tier2_watch
 

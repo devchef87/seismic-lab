@@ -132,13 +132,12 @@ def main():
         calib[f"be{tkey.replace('.','')}_x"] = iso.X_thresholds_
         calib[f"be{tkey.replace('.','')}_y"] = iso.y_thresholds_
 
-    tail60_va = pred_va[:, TAILS["6.0"]:].sum(axis=1)
-    cal60 = np.interp(tail60_va, calib["be60_x"], calib["be60_y"])
-    calib["be60_watch"] = np.array(float(np.percentile(cal60, 99.0)))
-    calib["be60_elevated"] = np.array(float(np.percentile(cal60, 99.7)))
-    print(f"  Bands (calibrated P(M6+/100km/30d)): "
-          f"WATCH >= {float(calib['be60_watch']):.3f}, "
-          f"ELEVATED >= {float(calib['be60_elevated']):.3f}")
+    # Meaning-based bands (see fit_calibration.py): volume-matched bands are
+    # period-dependent; fixed calibrated meaning is not.
+    calib["be60_watch"] = np.array(0.10)
+    calib["be60_elevated"] = np.array(0.30)
+    print("  Bands (calibrated P(M6+/100km/30d)): "
+          "WATCH >= 0.10 (~4x base), ELEVATED >= 0.30 (~12x base)")
 
     model.save_model(os.path.join(MODELS_DIR, "big_event_ordinal.txt"))
     np.savez(os.path.join(MODELS_DIR, "big_event_ordinal_calib.npz"), **calib)

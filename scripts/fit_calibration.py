@@ -101,17 +101,16 @@ def main():
         out[f"be{int(t*10)}_x"], out[f"be{int(t*10)}_y"] = \
             fit_iso(pred, y, f"big_event_m{int(t*10)}")
 
-    # ── Suggested bands: keep today's alert volume, calibrated scale ─────
+    # ── Bands: meaning-based, on the calibrated scale. Volume-matched bands
+    # (e.g. validation p99) are period-dependent — validation years include
+    # major aftershock storms that push the p99 raw score to ~0.8, which
+    # would make quiet-period watches impossible. Fixed meaning instead:
+    # WATCH = ~4x the M6/100km/30d base rate, ELEVATED = ~12x.
     if 6.0 in be_preds:
-        raw99 = float(np.percentile(be_preds[6.0], 99.0))
-        raw997 = float(np.percentile(be_preds[6.0], 99.7))
-        watch_cal = float(np.interp(raw99, out["be60_x"], out["be60_y"]))
-        elev_cal = float(np.interp(raw997, out["be60_x"], out["be60_y"]))
-        out["be60_watch"] = np.array(watch_cal)
-        out["be60_elevated"] = np.array(elev_cal)
-        print(f"\n  Suggested bands (calibrated P(M6+/100km/30d)):")
-        print(f"    WATCH    >= {watch_cal:.3f}  (raw-score p99   = {raw99:.3f})")
-        print(f"    ELEVATED >= {elev_cal:.3f}  (raw-score p99.7 = {raw997:.3f})")
+        out["be60_watch"] = np.array(0.10)
+        out["be60_elevated"] = np.array(0.30)
+        print(f"\n  Bands (calibrated P(M6+/100km/30d)): "
+              f"WATCH >= 0.10 (~4x base), ELEVATED >= 0.30 (~12x base)")
 
     np.savez(OUT, **out)
     print(f"\nSaved: {OUT}")

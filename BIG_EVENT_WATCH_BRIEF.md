@@ -15,6 +15,17 @@ Trained on 640K events, temporal holdout. For regions with **no recent M5+** (th
 
 This is **screening, not prediction**. The UI copy must never say "an M6 is predicted." Correct framing: *"conditions here statistically resemble those that preceded M6+ events."* Most watch entries will NOT be followed by a big event.
 
+### Probabilities are now calibrated (2026-07-21 update — action needed)
+
+`m6_prob` / `m55_prob` are now **calibrated empirical frequencies**: 0.10 means ~10% of historically identical situations produced an M6+ within 100km/30d. Previously these were raw model scores inflated ~3–10×, so **absolute values dropped sharply** (a region that used to show 0.36 now shows ~0.02). If you filter on these fields client-side, use the server's `level` field instead of hardcoded cutoffs — the server bands are now:
+
+| Level | Calibrated P(M6+ within 100km/30d) | Meaning |
+|---|---|---|
+| `watch` | ≥ 0.10 | ~4× the base rate for active regions |
+| `elevated` | ≥ 0.30 | ~12× base — rare, serious |
+
+**Expect the panel to be empty most of the time.** Under the calibrated bands, quiet global periods produce zero watch entries — that's correct behavior, not a bug. Entries appear mainly during vigorous regional buildups and after large mainshocks (elevated aftershock-zone risk is genuine risk). A populated panel now genuinely means something.
+
 ## New Payload Fields
 
 ### 1. Top-level `big_event_watch` array
