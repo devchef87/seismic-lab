@@ -194,17 +194,44 @@ def _regional_features(conn, lat, lon, epoch, ts):
     return feats
 
 
+# Ordinal model tail mapping: class k = follower-magnitude bin
+# [<5.0, 5.0-5.5, 5.5-6.0, 6.0-6.5, >=6.5]; P(>=thresh) = sum of tail classes.
+ORDINAL_PATH = os.path.join(MODELS_DIR, "big_event_ordinal.txt")
+ORDINAL_CALIB_PATH = os.path.join(MODELS_DIR, "big_event_ordinal_calib.npz")
+ORDINAL_TAILS = {"5.5": 2, "6.0": 3, "6.5": 4}
+
+
 class BigEventScorer:
     def __init__(self):
+        self.ordinal = None
+        self.ordinal_calib = {}
+        if os.path.exists(ORDINAL_PATH):
+            self.ordinal = lgb.Booster(model_file=ORDINAL_PATH)
+            try:
+                z = np.load(ORDINAL_CALIB_PATH)
+                for k in z.files:
+                    if k.endswith("_x") and k[:-2] + "_y" in z.files:
+                        self.ordinal_calib[k[:-2]] = (z[k], z[k[:-2] + "_y"])
+                global WATCH_PROB, ELEVATED_PROB
+                if "be60_watch" in z.files:
+                    WATCH_PROB = float(z["be60_watch"])
+                    ELEVATED_PROB = float(z["be60_elevated"])
+            except Exception:
+                pass
+            print(f"  [big_event] loaded ordinal model "
+                  f"({len(self.ordinal_calib)} tail calibrations, "
+                  f"watch>={WATCH_PROB:.3f})")
+
         self.models = {}
-        for thresh in THRESHOLDS:
-            path = os.path.join(MODELS_DIR, f"big_event_m{int(thresh*10)}.txt")
-            if os.path.exists(path):
-                self.models[thresh] = lgb.Booster(model_file=path)
-        if not self.models:
-            raise FileNotFoundError("No big_event_m*.txt models found")
-        print(f"  [big_event] loaded {len(self.models)} big-event models "
-              f"({sorted(self.models.keys())})")
+        if not self.ordinal:
+            for thresh in THRESHOLDS:
+                path = os.path.join(MODELS_DIR, f"big_event_m{int(thresh*10)}.txt")
+                if os.path.exists(path):
+                    self.models[thresh] = lgb.Booster(model_file=path)
+            if not self.models:
+                raise FileNotFoundError("No big-event models found")
+            print(f"  [big_event] loaded {len(self.models)} big-event models "
+                  f"({sorted(self.models.keys())})")
 
     def score_event(self, conn, ts, mag, depth, lat, lon):
         """Score one earthquake for big-event probability. Returns dict:
@@ -221,13 +248,24 @@ class BigEventScorer:
 
         fi = {name: i for i, name in enumerate(REGIONAL_FEAT_NAMES)}
         probs = {}
-        prev = 1.0
-        for thresh in sorted(self.models.keys()):
-            raw = float(self.models[thresh].predict(row)[0])
-            cal = apply_calibration(_calib, f"be{int(thresh*10)}", raw)
-            p = min(cal, prev)
-            probs[str(thresh)] = round(p, 3)
-            prev = p
+        if self.ordinal:
+            cls_p = self.ordinal.predict(row)[0]      # (5,) class probs
+            prev = 1.0
+            for tkey, cidx in ORDINAL_TAILS.items():
+                tail = float(cls_p[cidx:].sum())
+                cal = apply_calibration(self.ordinal_calib,
+                                        f"be{tkey.replace('.', '')}", tail)
+                p = min(cal, prev)   # safety only — tails are monotone pre-calibration
+                probs[tkey] = round(p, 3)
+                prev = p
+        else:
+            prev = 1.0
+            for thresh in sorted(self.models.keys()):
+                raw = float(self.models[thresh].predict(row)[0])
+                cal = apply_calibration(_calib, f"be{int(thresh*10)}", raw)
+                p = min(cal, prev)
+                probs[str(thresh)] = round(p, 3)
+                prev = p
 
         return {
             "probs": probs,
