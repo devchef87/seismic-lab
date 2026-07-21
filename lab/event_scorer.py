@@ -21,7 +21,31 @@ import json as _json
 _HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(os.path.dirname(_HERE), "models", "event_escalation_lgb.txt")
 MAG_TABLE_PATH = os.path.join(os.path.dirname(_HERE), "models", "mag_exceedance_table.json")
+CALIB_PATH = os.path.join(os.path.dirname(_HERE), "models", "probability_calibration.npz")
 DB_PATH = os.path.join(os.path.dirname(_HERE), "data", "quakewatch.db")
+
+
+def load_calibration():
+    """Isotonic calibration curves fitted on validation data
+    (scripts/fit_calibration.py). Returns {key: (x, y)} or {}."""
+    try:
+        z = np.load(CALIB_PATH)
+    except Exception:
+        return {}
+    curves = {}
+    for k in z.files:
+        if k.endswith("_x"):
+            name = k[:-2]
+            if name + "_y" in z.files:
+                curves[name] = (z[k], z[name + "_y"])
+    return curves
+
+
+def apply_calibration(curves, name, p):
+    if name in curves:
+        x, y = curves[name]
+        return float(np.interp(p, x, y))
+    return p
 
 GK_CAP_KM = 300
 MIN_MAG = 2.5
@@ -309,6 +333,11 @@ class EventScorer:
         except Exception:
             pass
 
+        self.calib = load_calibration()
+        if self.calib:
+            print(f"  [event_scorer] probability calibration active "
+                  f"({len(self.calib)} curves)")
+
     def _magnitude_probs(self, escalation_prob, seq_max, feats):
         """Per-threshold magnitude probabilities.
         M5.0-M6.0: per-threshold models (sequence-aware, 0.68-0.88 AUC).
@@ -322,8 +351,9 @@ class EventScorer:
             for thresh in sorted(self.mag_models.keys()):
                 if thresh <= seq_max:
                     continue
-                p = min(float(self.mag_models[thresh].predict(feat_row)[0]), prev_p)
-                p = round(p, 4)
+                raw = float(self.mag_models[thresh].predict(feat_row)[0])
+                cal = apply_calibration(self.calib, f"mag{int(thresh*10)}", raw)
+                p = round(min(cal, prev_p), 4)
                 if p >= 0.001:
                     probs[str(thresh)] = p
                 prev_p = p
@@ -358,6 +388,7 @@ class EventScorer:
 
         feats = _compute_features(mag, depth, lat, lon, epoch, conn)
         prob = float(self.model.predict(feats.reshape(1, -1))[0])
+        prob = apply_calibration(self.calib, "esc", prob)
         pattern = _classify_sequence(feats)
 
         fi = {name: i for i, name in enumerate(FEAT_NAMES)}

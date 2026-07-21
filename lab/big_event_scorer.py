@@ -16,7 +16,8 @@ import os, math
 import numpy as np
 import lightgbm as lgb
 
-from lab.event_scorer import _compute_features as _catalog_features
+from lab.event_scorer import (_compute_features as _catalog_features,
+                              load_calibration, apply_calibration)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(os.path.dirname(_HERE), "models")
@@ -30,9 +31,22 @@ _B_CONST = math.log10(math.e)
 
 THRESHOLDS = [5.5, 6.0]
 
-# Watch bands on the M6.0 probability (see BIG_EVENT_WATCH_BRIEF.md)
+# Watch bands on the M6.0 probability (see BIG_EVENT_WATCH_BRIEF.md).
+# Defaults are raw-score bands from the pre-calibration era; when a
+# calibration file exists (scripts/fit_calibration.py), bands come from it
+# and probabilities are calibrated empirical frequencies.
 WATCH_PROB = 0.30
 ELEVATED_PROB = 0.55
+_calib = load_calibration()
+if _calib:
+    import numpy as _np
+    try:
+        _z = _np.load(os.path.join(MODELS_DIR, "probability_calibration.npz"))
+        if "be60_watch" in _z.files:
+            WATCH_PROB = float(_z["be60_watch"])
+            ELEVATED_PROB = float(_z["be60_elevated"])
+    except Exception:
+        pass
 
 REGIONAL_FEAT_NAMES = [
     "r100_n_7d", "r100_n_30d", "r100_max_mag_30d", "r100_n_m4_30d",
@@ -209,7 +223,9 @@ class BigEventScorer:
         probs = {}
         prev = 1.0
         for thresh in sorted(self.models.keys()):
-            p = min(float(self.models[thresh].predict(row)[0]), prev)
+            raw = float(self.models[thresh].predict(row)[0])
+            cal = apply_calibration(_calib, f"be{int(thresh*10)}", raw)
+            p = min(cal, prev)
             probs[str(thresh)] = round(p, 3)
             prev = p
 

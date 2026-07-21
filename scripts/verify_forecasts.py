@@ -173,6 +173,64 @@ def main():
                           "n_prior_flags": len(pre),
                           "lead_hours": round(lead_h, 1) if lead_h else None})
 
+    # ── Region-level skill: cluster flags into watch regions, classify each
+    # as predictive (flagged BEFORE any M6 there) or post-hoc (aftershock
+    # context), and test observed hits against a no-skill null.
+    regions = []
+    for f in sorted(flagged, key=lambda x: x["time"]):
+        home = None
+        for r in regions:
+            if math.hypot((r["lat"] - f["lat"]) * 111.0,
+                          (r["lon"] - f["lon"]) * 111.0 *
+                          math.cos(math.radians(r["lat"]))) <= 200.0:
+                home = r
+                break
+        if home is None:
+            home = {"lat": f["lat"], "lon": f["lon"], "first_flag": f["time"],
+                    "n_flags": 0, "peak_p": 0.0}
+            regions.append(home)
+        home["n_flags"] += 1
+        home["peak_p"] = max(home["peak_p"], f["m6_prob"])
+
+    for r in regions:
+        rt = datetime.fromisoformat(
+            r["first_flag"].replace("Z", "+00:00")).timestamp()
+        hits = [q for q in m6_actual
+                if math.hypot((r["lat"] - q["lat"]) * 111.0,
+                              (r["lon"] - q["lon"]) * 111.0 *
+                              math.cos(math.radians(r["lat"]))) <= 150.0]
+        pre = [q for q in hits if datetime.fromisoformat(
+            q["time"].replace("Z", "+00:00")).timestamp() < rt]
+        post = [q for q in hits if 0 <= datetime.fromisoformat(
+            q["time"].replace("Z", "+00:00")).timestamp() - rt <= 30 * 86400]
+        r["predictive"] = not pre           # watch started before any M6 here
+        r["hit"] = bool(post)
+        r["resolved"] = rt + 30 * 86400 <= now_epoch or bool(post)
+
+    pred_regions = [r for r in regions if r["predictive"]]
+    pred_resolved = [r for r in pred_regions if r["resolved"]]
+    pred_hits = sum(r["hit"] for r in pred_resolved)
+    NULL_P = 0.054   # 11-yr base: P(M6 within 100km/30d | active location)
+    try:
+        from scipy.stats import binom
+        p_value = float(binom.sf(pred_hits - 1, max(len(pred_resolved), 1),
+                                 NULL_P)) if pred_hits > 0 else 1.0
+    except Exception:
+        p_value = None
+
+    region_skill = {
+        "n_watch_regions": len(regions),
+        "n_predictive": len(pred_regions),
+        "n_predictive_resolved": len(pred_resolved),
+        "predictive_hits": pred_hits,
+        "hit_rate_resolved": round(pred_hits / max(len(pred_resolved), 1), 3),
+        "null_base_rate": NULL_P,
+        "expected_hits_under_null": round(len(pred_resolved) * NULL_P, 2),
+        "binomial_p_value": round(p_value, 4) if p_value is not None else None,
+        "regions": [{k: (round(v, 3) if isinstance(v, float) else v)
+                     for k, v in r.items()} for r in regions],
+    }
+
     bands = [(0, 0.05), (0.05, 0.15), (0.15, 0.30), (0.30, 0.55), (0.55, 1.01)]
     esc_bands = [(0, 0.1), (0.1, 0.3), (0.3, 0.5), (0.5, 0.7), (0.7, 0.9), (0.9, 1.01)]
 
@@ -191,6 +249,7 @@ def main():
             "precision": round(sum(o for _, o in watch_res) /
                                max(len(watch_res), 1), 3),
         },
+        "region_skill": region_skill,
         "m6_actual": m6_recall,
         "flagged_events": flagged,
     }
@@ -214,6 +273,25 @@ def main():
     wp = report["m6_watch_precision"]
     print(f"\n  M6 watch (p >= {WATCH_PROB}): {wp['n_flagged_events']} flagged events, "
           f"{wp['n_resolved']} resolved, precision {wp['precision']:.1%}")
+
+    rs = region_skill
+    print(f"\n  REGION-LEVEL SKILL (the honest hit rate):")
+    print(f"    watch regions: {rs['n_watch_regions']} "
+          f"({rs['n_predictive']} predictive, "
+          f"{rs['n_watch_regions'] - rs['n_predictive']} post-hoc/aftershock)")
+    print(f"    predictive resolved: {rs['n_predictive_resolved']} | "
+          f"hits: {rs['predictive_hits']} "
+          f"({rs['hit_rate_resolved']:.0%})")
+    print(f"    expected under no-skill null ({NULL_P:.1%}/region): "
+          f"{rs['expected_hits_under_null']}"
+          + (f" | binomial p={rs['binomial_p_value']}"
+             if rs['binomial_p_value'] is not None else ""))
+    for r in rs["regions"]:
+        tag = ("HIT" if r["hit"] else
+               ("pending" if not r["resolved"] else "no M6"))
+        kind = "predictive" if r["predictive"] else "post-hoc"
+        print(f"      ({r['lat']:.1f},{r['lon']:.1f}) peak={r['peak_p']:.2f} "
+              f"x{r['n_flags']} from {r['first_flag'][:10]}  [{kind}] {tag}")
     print(f"\n  Actual M6+ events in window: {len(m6_recall)}")
     for r in m6_recall:
         q = r["quake"]
