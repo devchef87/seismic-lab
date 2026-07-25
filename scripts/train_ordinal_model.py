@@ -17,6 +17,14 @@ auto-prefers it when present).
 Reference (per-threshold + T3, first-event):
     M5.5 AUC 0.6724 P@0.1%=23.9% | M6.0 AUC 0.7148 P@0.1%=14.9% | M6.5 AUC 0.474
 
+RESULT (2026-07-25 run): LOST — not deployed. M5.5 first-event 0.6403,
+M6.0 first-event 0.6887 with P@0.1% collapsing to 3.0% (vs 14.9%). M6.5
+"won" 0.470 vs 0.436 but both are below chance. Multiclass splits capacity
+across 5 bins and dilutes exactly the top-of-ranking sharpness the watch
+depends on; the clamp problem it targeted is already solved by isotonic
+calibration. Keep the per-threshold ensemble. Revisit only after a
+pre-2015 catalog backfill (T5) changes the data regime.
+
 Also fits isotonic calibration for each tail on the validation slice and
 saves models/big_event_ordinal_calib.npz (curves + watch/elevated bands).
 
